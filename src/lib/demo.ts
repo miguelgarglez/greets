@@ -298,7 +298,7 @@ export class Demo {
     const c = this.ctx;
     c.fillStyle = 'rgba(4,4,10,0.62)';
     c.fillRect(0, 0, W, H);
-    if (Math.floor(t * 1.6) % 2 === 0) {
+    if ((t * 1.5) % 1 < 0.75) {
       this.tinyText(touch ? '- TAP TO BOOT -' : '- PRESS ANY KEY TO BOOT -', H / 2 + 30, 0);
     }
   }
