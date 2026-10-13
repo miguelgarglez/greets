@@ -83,7 +83,8 @@ export class Demo {
     const r = RAMPS[ramp];
     const pal = new Uint32Array(64);
     for (let i = 0; i < 64; i++) {
-      const f = i / 63 * (r.length - 1);
+      // skip the two darkest stops or the field reads as mud
+      const f = 2 + i / 63 * (r.length - 3);
       const c = r[Math.round(f)];
       const n = parseInt(c.slice(1), 16);
       pal[i] = 0xff000000 | ((n & 0xff) << 16) | (n & 0xff00) | ((n >> 16) & 0xff);
