@@ -5,7 +5,7 @@ import { loadPixelFont } from '../src/lib/font.ts';
 import { hashName, mulberry32, pick } from '../src/lib/prng.ts';
 import { makeScrolltext } from '../src/lib/scrolltext.ts';
 
-export type Section = 'loop' | 'classic' | 'plasma' | 'blitter' | 'boot';
+export type Section = 'loop' | 'classic' | 'plasma' | 'blitter' | 'preboot';
 
 // runs the real demo engine on a canvas; `section` locks a frame for stills
 export function Stage({ name, section, t0 = 4 }: { name: string; section: Section; t0?: number }) {
@@ -27,6 +27,7 @@ export function Stage({ name, section, t0 = 4 }: { name: string; section: Sectio
         const sec = section === 'loop' ? demo.sectionAt(Math.floor(t / 9)) : section;
         if (sec === 'classic') demo.renderClassic(t);
         else if (sec === 'plasma') demo.renderPlasma(t);
+        else if (sec === 'preboot') demo.renderPreboot(t);
         else demo.renderBlitter(t);
         raf = requestAnimationFrame(frame);
       };

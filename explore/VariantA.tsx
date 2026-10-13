@@ -5,13 +5,15 @@ export default function VariantA({ name }: { name: string }) {
   return (
     <div className="ga">
       <div className="ga-room" />
+      <div className="ga-vbar top" />
+      <div className="ga-vbar bottom" />
       <div className="ga-tube">
-        <Stage name={name} section="classic" />
+        <Stage name={name} section="preboot" />
         <Crt />
       </div>
       <div className="ga-chrome">
         <span className="ga-mark">GREETS</span>
-        <span className="ga-hint">greets.dev/{name.toLowerCase()} — press any key to boot</span>
+        <span className="ga-hint">greets.dev/{name.toLowerCase()}</span>
       </div>
     </div>
   );

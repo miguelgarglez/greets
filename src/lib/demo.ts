@@ -49,8 +49,19 @@ export class Demo {
     this.scrolltext = a.scrolltext;
     const rng = mulberry32(a.seed);
     this.stars = Array.from({ length: 150 }, () => ({ x: rng() * W, y: rng() * H, z: pick(rng, [0.25, 0.55, 1]) }));
-    const scale = a.name.length <= 7 ? 4 : a.name.length <= 10 ? 3 : 2;
-    this.logo = bakeLogo(a.font, a.name, scale, [[0, '#ffffff'], [0.55, '#e8e8ff'], [0.8, this.ramp[4]], [1, this.ramp[2]]]);
+    let scale = a.name.length <= 7 ? 4 : a.name.length <= 10 ? 3 : 2;
+    let logo = bakeLogo(a.font, a.name, scale, [[0, '#ffffff'], [0.55, '#e8e8ff'], [0.8, this.ramp[4]], [1, this.ramp[2]]]);
+    // the name must always land inside the glass, trail included
+    if (logo.w > 288) {
+      const f = 288 / logo.w;
+      const cv = document.createElement('canvas');
+      cv.width = 288; cv.height = Math.round(logo.h * f);
+      const c = cv.getContext('2d')!;
+      c.imageSmoothingEnabled = false;
+      c.drawImage(logo.cv, 0, 0, 288, cv.height);
+      logo = { cv, w: 288, h: cv.height };
+    }
+    this.logo = logo;
     this.plasmaImg = new ImageData(W, H);
     this.plasmaPal = this.buildPlasmaPalette(a.ramp);
     this.sections = shuffle(rng, ['classic', 'plasma', 'blitter']);

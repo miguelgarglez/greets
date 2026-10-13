@@ -17,6 +17,16 @@ function pathName(): string | null {
 type Phase = 'landing' | 'preboot' | 'poweron' | 'running';
 const REDUCED = typeof matchMedia !== 'undefined' && matchMedia('(prefers-reduced-motion: reduce)').matches;
 
+// the seeded copper ramp, also worn by the void bars outside the tube
+function rampFor(name: string): RampName {
+  return pick(mulberry32(hashName(name) ^ 0xface), Object.keys(RAMPS)) as RampName;
+}
+function vbarGradient(ramp: RampName): string {
+  const r = RAMPS[ramp];
+  return `linear-gradient(to bottom, ${r[0]}, ${r[2]}, ${r[4]}, ${r[r.length - 2]}, ${r[4]}, ${r[2]}, ${r[0]})`;
+}
+
+
 export default function App() {
   const [name, setName] = useState<string | null>(pathName);
   const [phase, setPhase] = useState<Phase>(name ? 'preboot' : 'landing');
@@ -86,6 +96,10 @@ export default function App() {
     return () => { removeEventListener('keydown', onKey); removeEventListener('pointerdown', boot); };
   }, []);
 
+  useEffect(() => {
+    document.documentElement.style.setProperty('--vbar', vbarGradient(rampFor(name ?? 'STRANGER')));
+  }, [name]);
+
   const submit = () => {
     const s = draft.trim();
     if (!s) return;
@@ -97,6 +111,8 @@ export default function App() {
   return (
     <div className="app">
       <div className="room" />
+      <div className="vbar top" />
+      <div className="vbar bottom" />
       <div className="tube">
         <canvas ref={canvasRef} className="demoscreen" aria-label={`cracktro greeting ${name ?? ''}`} />
         <div className="crt" aria-hidden>
@@ -120,9 +136,8 @@ export default function App() {
       <div className="chrome">
         <span className="mark">GREETS</span>
         <span className="hint">
-          {phase === 'landing' ? 'a cracktro for any name — press enter'
-            : phase === 'running' ? `greets.dev/${(name ?? '').toLowerCase()}`
-            : `greets.dev/${(name ?? '').toLowerCase()} — press any key to boot`}
+          {phase === 'landing' ? 'a cracktro for any name'
+            : `greets.dev/${(name ?? '').toLowerCase()}`}
         </span>
       </div>
     </div>

@@ -8,13 +8,20 @@ html, body, #root { height: 100%; }
 body { background: #060608; overflow: hidden; font-family: 'PS2P', monospace; }
 
 .app { height: 100%; position: relative; display: flex; align-items: center; justify-content: center; }
+.vbar {
+  position: absolute; left: 0; right: 0; height: 14px;
+  background: var(--vbar, linear-gradient(to bottom, #3c1404, #782a06, #b8480a, #ffd880, #b8480a, #782a06, #3c1404));
+  display: none;
+}
+.vbar.top { top: 9vh; }
+.vbar.bottom { bottom: 14vh; }
 .room {
   position: absolute; inset: 0;
   background: radial-gradient(140% 100% at 50% 0%, #10101a 0%, #060608 55%, #030304 100%);
 }
 .tube {
   position: relative;
-  height: min(88vh, 132vw);
+  width: min(96vw, 140vh);
   aspect-ratio: 320 / 200;
   border-radius: 8px;
   overflow: hidden;
@@ -55,9 +62,10 @@ body { background: #060608; overflow: hidden; font-family: 'PS2P', monospace; }
   padding: 0 4vw; color: #8a8ab0; font-size: 11px; letter-spacing: 1px;
 }
 .mark { color: #e8e8ff; }
-.hint { font-size: 8px; color: #55556e; text-align: right; }
+.hint { font-size: 9px; color: #9a9ac0; text-align: right; }
 
 @media (max-width: 700px) {
+  .vbar { display: block; }
   .chrome { flex-direction: column; gap: 8px; align-items: center; padding: 0 6vw; text-align: center; }
   .hint { text-align: center; }
 }

@@ -32,14 +32,23 @@ body { background: #060608; overflow: hidden; font-family: 'PS2P', monospace; }
 }
 
 /* ---------- A: sanity — the demo is the page ---------- */
-.ga { height: 100%; position: relative; display: flex; align-items: center; justify-content: center; }
+.ga { height: 100%; position: relative; display: flex; align-items: center; justify-content: center;
+  --vbar: linear-gradient(to bottom, #3c1404, #782a06, #b8480a, #ffd880, #b8480a, #782a06, #3c1404); }
+.ga-vbar {
+  position: absolute; left: 0; right: 0; height: 14px;
+  background: var(--vbar);
+  box-shadow: 0 0 30px rgba(230, 90, 30, 0.25);
+  display: none;
+}
+.ga-vbar.top { top: 9vh; }
+.ga-vbar.bottom { bottom: 14vh; }
 .ga-room {
   position: absolute; inset: 0;
   background: radial-gradient(140% 100% at 50% 0%, #10101a 0%, #060608 55%, #030304 100%);
 }
 .ga-tube {
   position: relative;
-  height: min(88vh, 132vw);
+  width: min(96vw, 140vh);
   aspect-ratio: 320 / 200;
   border-radius: 8px;
   overflow: hidden;
@@ -51,7 +60,7 @@ body { background: #060608; overflow: hidden; font-family: 'PS2P', monospace; }
   padding: 0 4vw; color: #8a8ab0; font-size: 11px; letter-spacing: 1px;
 }
 .ga-mark { color: #e8e8ff; }
-.ga-hint { font-size: 8px; color: #55556e; }
+.ga-hint { font-size: 9px; color: #9a9ac0; }
 
 /* ---------- B: plasma — marquee + full bleed ---------- */
 .gb { height: 100%; position: relative; display: flex; flex-direction: column; align-items: center; }
@@ -140,6 +149,7 @@ body { background: #060608; overflow: hidden; font-family: 'PS2P', monospace; }
 }
 
 @media (max-width: 700px) {
+  .ga-vbar { display: block; }
   .ga-chrome { flex-direction: column; gap: 8px; align-items: center; padding: 0 6vw; text-align: center; }
   .gb-strip { margin-top: 4vh; padding: 10px 14px; }
   .gc-screen { width: 86vw; }
