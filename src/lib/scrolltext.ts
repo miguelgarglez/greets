@@ -33,6 +33,7 @@ export function makeScrolltext(name: string): string {
     `${pick(rng, OPENERS)} ${name.toUpperCase()} ... `,
     pick(rng, BOASTS) + ' ... ',
     `GREETINGS ALSO FLY TO ${shuffle(rng, [...CREW]).slice(0, 4).join(' - ')} ... `,
+    `SHARE THIS ONE - GREETS DEV / ${name.toUpperCase()} ... `,
     pick(rng, BOASTS) + ' ... ',
     pick(rng, CLOSERS) + '     ',
   ];

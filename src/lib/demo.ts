@@ -242,6 +242,11 @@ export class Demo {
     this.scroller(t);
   }
 
+  private lastDraftLen = 0;
+  private flashStart = -9;
+  private flashIdx = -1;
+  private flashCv: HTMLCanvasElement | null = null;
+
   // bios/landing: static starfield + boot text, name typed live
   renderBios(t: number, draft: string) {
     const c = this.ctx;
@@ -250,15 +255,34 @@ export class Demo {
     this.starfield(t * 0.15);
     this.tinyText('GREETS BIOS v1.0', 30, t);
     this.tinyText('TYPE A NAME - PRESS ENTER', 58, t);
-    // the draft in big letters, cursor blinking
+    this.tinyText('A CRACKTRO FOR ANY NAME', 150, t);
     const shown = (draft.toUpperCase() || '').slice(0, 12);
+    if (shown.length > this.lastDraftLen) { this.flashStart = t; this.flashIdx = shown.length - 1; }
+    this.lastDraftLen = shown.length;
     const w = this.font.textW(shown, 0) * 2;
     let x = (W - w) / 2;
+    let i = 0;
     for (const ch of shown) {
       const gl = this.font.get(ch);
-      if (!gl) { x += 10; continue; }
-      c.drawImage(gl.cv, x, 96, gl.w * 2, gl.h * 2);
+      if (!gl) { x += 10; i++; continue; }
+      if (i === this.flashIdx && t - this.flashStart < 0.28) {
+        // the new letter flashes hot for a few frames
+        if (!this.flashCv) this.flashCv = document.createElement('canvas');
+        const fc = this.flashCv;
+        fc.width = gl.w * 2; fc.height = gl.h * 2;
+        const fx = fc.getContext('2d')!;
+        fx.imageSmoothingEnabled = false;
+        fx.drawImage(gl.cv, 0, 0, fc.width, fc.height);
+        fx.globalCompositeOperation = 'source-in';
+        fx.fillStyle = this.ramp[6];
+        fx.fillRect(0, 0, fc.width, fc.height);
+        fx.globalCompositeOperation = 'source-over';
+        c.drawImage(fc, x, 96);
+      } else {
+        c.drawImage(gl.cv, x, 96, gl.w * 2, gl.h * 2);
+      }
       x += gl.w * 2 + 2;
+      i++;
     }
     if (Math.floor(t * 2) % 2 === 0) {
       c.fillStyle = '#e8e8ff';
@@ -267,7 +291,8 @@ export class Demo {
     this.copper(t, 8, 178);
   }
 
-  // preboot: the demo, paused and dimmed, waiting for the gesture
+  // preboot: the demo, paused and dimmed, waiting for the gesture.
+  // one blinking boot line and nothing else
   renderPreboot(t: number, touch = false) {
     this.renderClassic(0);
     const c = this.ctx;
@@ -276,7 +301,6 @@ export class Demo {
     if (Math.floor(t * 1.6) % 2 === 0) {
       this.tinyText(touch ? '- TAP TO BOOT -' : '- PRESS ANY KEY TO BOOT -', H / 2 + 30, 0);
     }
-    this.tinyText('GREETS BIOS READY', 26, t);
   }
 
   // crt power-on: u 0..1 — dot → horizontal line → full frame
@@ -305,6 +329,19 @@ export class Demo {
       if (s === 'classic') this.renderClassic(lt);
       else if (s === 'plasma') this.renderPlasma(lt);
       else this.renderBlitter(lt);
+    }
+    // sections never teleport: a copper-clock wipe reveals the new frame
+    const u = lt / 0.45;
+    if (u < 1) {
+      const c = this.ctx;
+      const half = Math.round((1 - u) * W * 0.55);
+      c.fillStyle = '#05050a';
+      c.fillRect(0, 0, half, H);
+      c.fillRect(W - half, 0, half, H);
+      const e = this.ramp[4];
+      c.fillStyle = e;
+      c.fillRect(half, 0, 2, H);
+      c.fillRect(W - half - 2, 0, 2, H);
     }
   }
 

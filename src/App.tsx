@@ -97,7 +97,9 @@ export default function App() {
   }, []);
 
   useEffect(() => {
-    document.documentElement.style.setProperty('--vbar', vbarGradient(rampFor(name ?? 'STRANGER')));
+    const ramp = rampFor(name ?? 'STRANGER');
+    document.documentElement.style.setProperty('--vbar', vbarGradient(ramp));
+    document.documentElement.style.setProperty('--vbar-glow', RAMPS[ramp][4] + '55');
   }, [name]);
 
   const submit = () => {
@@ -132,13 +134,6 @@ export default function App() {
             onKeyDown={(e) => { if (e.key === 'Enter') submit(); }}
           />
         )}
-      </div>
-      <div className="chrome">
-        <span className="mark">GREETS</span>
-        <span className="hint">
-          {phase === 'landing' ? 'a cracktro for any name'
-            : `greets.dev/${(name ?? '').toLowerCase()}`}
-        </span>
       </div>
     </div>
   );
