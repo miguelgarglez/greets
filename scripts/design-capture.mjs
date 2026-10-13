@@ -15,7 +15,8 @@ for (const [path, tag, vp, touch] of [
   await p.goto(base + path);
   await p.waitForTimeout(2200);
   if (tag.includes('running') || tag === '07-longname') {
-    await p.mouse.click(vp[0] / 2, vp[1] / 2);
+    // key boots without toggling mute — a tap would draw SND OFF into the still
+    await p.keyboard.press('Space');
     await p.waitForTimeout(4500);
   }
   if (tag === '01-landing') { await p.keyboard.type('miguel'); await p.waitForTimeout(500); }
