@@ -180,13 +180,13 @@ export class Demo {
     }
   }
 
-  renderClassic(t: number) {
+  renderClassic(t: number, logo = true) {
     const c = this.ctx;
     c.fillStyle = '#05050a';
     c.fillRect(0, 0, W, H);
     this.starfield(t);
     this.copper(t);
-    this.waveLogo(t, H * 0.3);
+    if (logo) this.waveLogo(t, H * 0.3);
     this.tinyText('- ANOTHER GREETS DEV PRODUCTION -', H * 0.56, t);
     this.scroller(t);
   }
@@ -315,7 +315,7 @@ export class Demo {
       c.fillRect(0, H / 2 - 1, W, 3);
       return;
     }
-    this.renderClassic(0);
+    this.renderClassic(0, false);
     const o = (u - 0.12) / 0.88;
     const hh = (1 - o) * (H / 2);
     c.fillStyle = '#05050a';
