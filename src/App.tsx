@@ -39,13 +39,15 @@ export default function App() {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
   const deckRef = useRef<Deck | null>(null);
+  const mutedRef = useRef(false);
+  try { mutedRef.current = localStorage.getItem('greets-muted') === '1'; } catch { /* private mode */ }
   const phaseRef = useRef(phase);
   phaseRef.current = phase;
 
   // the demo engine lives outside react; draft flows in via ref
   const draftRef = useRef(draft);
   draftRef.current = draft;
-  const powerRef = useRef({ started: 0, done: 0 });
+  const powerRef = useRef({ started: 0, done: 0, fromLanding: false, pressAt: 0 });
 
   useEffect(() => {
     let stop = false;
@@ -75,29 +77,31 @@ export default function App() {
           demo.wipe(u);
           if (u >= 1) {
             powerRef.current.started = now;
+            powerRef.current.fromLanding = true;
             if (!REDUCED) navigator.vibrate?.(18);
             const d = deckRef.current;
             if (d) { void d.ctx.resume(); d.play(); }
             setPhase('poweron');
           }
         }
-        else if (ph === 'preboot') demo.renderPreboot(t, navigator.maxTouchPoints > 0);
+        else if (ph === 'preboot') demo.renderPreboot(t, navigator.maxTouchPoints > 0, now - powerRef.current.pressAt < 160);
         else if (ph === 'poweron') {
           const u = (now - powerRef.current.started) / 600;
           if (u >= 1) { powerRef.current.done = now; setPhase('running'); }
-          else demo.renderPowerOn(u);
+          else demo.renderPowerOn(u, powerRef.current.fromLanding ? draftRef.current : null, t);
         }
         else {
           const sinceBoot = (now - powerRef.current.done) / 1000;
           const lt = t - Math.floor(t / 9) * 9;
-          if (sinceBoot < 1.4) demo.renderIntro(sinceBoot, lt);
-          else demo.renderLoop(t, greetz);
+          if (sinceBoot < 1.4) demo.renderIntro(sinceBoot, lt, powerRef.current.fromLanding ? draftRef.current : null);
+          else { demo.muted = mutedRef.current; demo.renderLoop(t, greetz); }
         }
         if (!(REDUCED && ph === 'running')) raf = requestAnimationFrame(frame);
       };
       raf = requestAnimationFrame(frame);
       // prebuild audio so the gesture plays instantly
       deckRef.current = bootAudio(tune);
+      deckRef.current.gain.gain.value = mutedRef.current ? 0 : 0.8;
     })();
     return () => { stop = true; cancelAnimationFrame(raf); deckRef.current?.stop(); deckRef.current?.ctx.close(); };
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -107,6 +111,7 @@ export default function App() {
     const boot = () => {
       if (phaseRef.current === 'preboot') {
         powerRef.current.started = performance.now();
+        powerRef.current.fromLanding = false;
         setPhase('poweron');
         if (!REDUCED) navigator.vibrate?.(18);
         const d = deckRef.current;
@@ -115,10 +120,32 @@ export default function App() {
     };
     const onKey = (e: KeyboardEvent) => {
       if (phaseRef.current === 'preboot') { e.preventDefault(); boot(); }
+      else if (e.key === 'm' || e.key === 'M') {
+        const d = deckRef.current;
+        if (d) {
+          mutedRef.current = !mutedRef.current;
+          d.gain.gain.value = mutedRef.current ? 0 : 0.8;
+          try { localStorage.setItem('greets-muted', mutedRef.current ? '1' : '0'); } catch { /* private mode */ }
+        }
+      }
+    };
+    const onTap = () => {
+      if (phaseRef.current === 'preboot') {
+        // the power key shows the press for a beat before the beam fires
+        powerRef.current.pressAt = performance.now();
+        setTimeout(boot, 160);
+      } else if (phaseRef.current === 'running') {
+        const d = deckRef.current;
+        if (d) {
+          mutedRef.current = !mutedRef.current;
+          d.gain.gain.value = mutedRef.current ? 0 : 0.8;
+          try { localStorage.setItem('greets-muted', mutedRef.current ? '1' : '0'); } catch { /* private mode */ }
+        }
+      }
     };
     addEventListener('keydown', onKey);
-    addEventListener('pointerdown', boot);
-    return () => { removeEventListener('keydown', onKey); removeEventListener('pointerdown', boot); };
+    addEventListener('pointerdown', onTap);
+    return () => { removeEventListener('keydown', onKey); removeEventListener('pointerdown', onTap); };
   }, []);
 
   useEffect(() => {

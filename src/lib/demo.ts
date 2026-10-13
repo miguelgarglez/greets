@@ -148,7 +148,7 @@ export class Demo {
     c.globalAlpha = 1;
   }
 
-  private scroller(t: number, scale = 2, yBase = H - 24) {
+  private scroller(t: number, scale = 2, yBase = H - 22) {
     const c = this.ctx;
     const speed = 55;
     const adv = this.font.px * scale * 1.0;
@@ -308,56 +308,97 @@ export class Demo {
   private flashStart = -9;
   private flashIdx = -1;
 
+  // the typed name row — shared by the bios, the slit, and the intro fade,
+  // so the word you typed and the word that waves are one continuous object
+  private drawDraft(shown: string, t: number, alpha = 1) {
+    const c = this.ctx;
+    const w = this.drawnW(shown, 2);
+    let x = (W - w) / 2;
+    let i = 0;
+    c.globalAlpha = alpha;
+    for (const ch of shown) {
+      const gl = this.font.get(ch);
+      if (!gl) { x += this.font.px * 0.5 * 2 + 2; i++; continue; }
+      const flashing = i === this.flashIdx && t - this.flashStart < 0.28;
+      if (flashing && alpha >= 1) c.drawImage(this.hotGlyph(ch, 2), x, 96);
+      else c.drawImage(gl.cv, x, 96, gl.w * 2, gl.h * 2);
+      x += gl.w * 2 + 2;
+      i++;
+    }
+    c.globalAlpha = 1;
+    return x;
+  }
+
   // bios/landing: static starfield + boot text, name typed live
   renderBios(t: number, draft: string) {
     const c = this.ctx;
     c.fillStyle = '#05050a';
     c.fillRect(0, 0, W, H);
     this.starfield(t * 0.15);
-    this.tinyText('TYPE A NAME', 52, t, 2);
     const shown = (draft.toUpperCase() || '').slice(0, 12);
     if (shown.length > this.lastDraftLen) { this.flashStart = t; this.flashIdx = shown.length - 1; }
     this.lastDraftLen = shown.length;
-    const w = this.font.textW(shown, 0) * 2;
-    let x = (W - w) / 2;
-    let i = 0;
-    for (const ch of shown) {
-      const gl = this.font.get(ch);
-      if (!gl) { x += 10; i++; continue; }
-      const flashing = i === this.flashIdx && t - this.flashStart < 0.28;
-      // the new letter lands in the ramp's hot stop, then settles to white
-      if (flashing) c.drawImage(this.hotGlyph(ch, 2), x, 96);
-      else c.drawImage(gl.cv, x, 96, gl.w * 2, gl.h * 2);
-      x += gl.w * 2 + 2;
-      i++;
-    }
+    this.tinyText('TYPE A NAME', 52, t, 2);
+    const x = this.drawDraft(shown, t);
     if (Math.floor(t * 2) % 2 === 0) {
       c.fillStyle = this.ramp[6];
       c.fillRect(x, 96 + 18, 14, 3);
     }
+    if (shown) this.tinyText('PRESS ENTER', 138, t, 1);
     // a keystroke kicks the copper — the machine reacts too
     const flash = t - this.flashStart < 0.28;
     this.copper(t, 8, 178, flash ? 6 : 0, flash ? 3 : 0);
   }
 
+  // a pixel power key — the visible boot target on touch, drawn pressed
+  // while the gesture is held
+  private powerKey(cx: number, cy: number, pressed: boolean) {
+    const c = this.ctx;
+    const bm = [
+      '....#....',
+      '....#....',
+      '.#..#..#.',
+      '#...#...#',
+      '#...#...#',
+      '#.......#',
+      '.#.....#.',
+      '..#####..',
+    ];
+    const s = 2, ox = cx - bm[0].length, oy = cy - bm.length + (pressed ? 1 : 0);
+    c.fillStyle = pressed ? this.ramp[7] : this.ramp[5];
+    for (let y = 0; y < bm.length; y++)
+      for (let x = 0; x < bm[y].length; x++)
+        if (bm[y][x] === '#') c.fillRect(ox + x * s, oy + y * s, s, s);
+  }
+
   // preboot: the demo, paused and dimmed, waiting for the gesture.
-  // one blinking boot line and nothing else — the name hasn't arrived yet
-  renderPreboot(t: number, touch = false) {
+  // the words stay on the glass — only the dashes breathe — plus a power key
+  renderPreboot(t: number, touch = false, pressed = false) {
     this.renderClassic(0, false);
     const c = this.ctx;
     c.fillStyle = 'rgba(4,4,10,0.62)';
     c.fillRect(0, 0, W, H);
+    const core = touch ? 'TAP TO BOOT' : 'PRESS ANY KEY TO BOOT';
+    const full = '- ' + core + ' -';
+    let s = 2;
+    while (s > 1 && this.drawnW(full, s) > W - 16) s -= 0.5;
+    const y = H / 2 + 28;
+    this.tinyText(core, y, 0, s);
     if ((t * 1.5) % 1 < 0.75) {
-      const msg = touch ? '- TAP TO BOOT -' : '- PRESS ANY KEY TO BOOT -';
-      // biggest scale whose real drawn width still fits the raster
-      let s = 2;
-      while (s > 1 && this.drawnW(msg, s) > W - 16) s -= 0.5;
-      this.tinyText(msg, H / 2 + 28, 0, s);
+      // the dashes blink, the words hold
+      const x0 = (W - this.drawnW(full, s)) / 2;
+      const gl = this.font.get('-');
+      if (gl) {
+        c.drawImage(gl.cv, x0, y, gl.w * s, gl.h * s);
+        c.drawImage(gl.cv, x0 + this.drawnW(full, s) - gl.w * s, y, gl.w * s, gl.h * s);
+      }
     }
+    this.powerKey(W / 2, y + 26, pressed);
   }
 
-  // crt power-on: the beam collapses in, then the slit opens into the demo
-  renderPowerOn(u: number) {
+  // crt power-on: the beam collapses in, then the slit opens. coming from the
+  // landing it opens on the typed name itself; from a permalink on the frame.
+  renderPowerOn(u: number, draft: string | null = null, t = 0) {
     const c = this.ctx;
     if (u < 0.12) {
       c.fillStyle = '#05050a';
@@ -366,7 +407,11 @@ export class Demo {
       c.fillRect(0, H / 2 - 1, W, 3);
       return;
     }
-    this.renderClassic(0, false, false);
+    if (draft) {
+      this.renderBios(t, draft);
+    } else {
+      this.renderClassic(0, false, false);
+    }
     const o = (u - 0.12) / 0.88;
     const hh = (1 - o) * (H / 2);
     c.fillStyle = '#05050a';
@@ -389,12 +434,14 @@ export class Demo {
   // each one glowing hot over its own chrome. u is seconds since the slit
   // opened; t is the section clock and the trail is drawn from the first
   // column, so the last intro frame IS the first classic frame — no cut.
-  renderIntro(u: number, t: number) {
+  renderIntro(u: number, t: number, draft: string | null = null) {
     const c = this.ctx;
     c.fillStyle = '#05050a';
     c.fillRect(0, 0, W, H);
     this.starfield(t);
     this.copper(t);
+    // the typed word dissolves into the demo it becomes — it never teleports
+    if (draft && u < 0.5) this.drawDraft(draft.toUpperCase().slice(0, 12), t, 1 - u * 2);
     const hot = this.solidLogo(this.ramp[6]);
     const x0 = (W - this.logo.w) / 2;
     const draws = [{ d: -0.11, a: 0.25 }, { d: -0.055, a: 0.45 }, { d: 0, a: 1 }];
@@ -422,6 +469,8 @@ export class Demo {
     if (u > 0.25 + nLetters * 0.1 + 0.15) this.scroller(t);
   }
 
+  muted = false;
+
   renderLoop(t: number, greetz: string[]) {
     const i = Math.floor(t / 9) % (this.sections.length + 1);
     const lt = t - Math.floor(t / 9) * 9;
@@ -434,6 +483,7 @@ export class Demo {
     }
     // sections never teleport: a copper-clock wipe reveals the new frame
     this.wipe(lt / 0.45);
+    if (this.muted) this.tinyText('SND OFF', 3, 0, 1);
   }
 
   // dark shutters parting from center, edged with the ramp — one transition

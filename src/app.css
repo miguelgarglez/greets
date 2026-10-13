@@ -9,7 +9,9 @@ body { background: #060608; overflow: hidden; font-family: 'PS2P', monospace; }
 
 .app { height: 100%; position: relative; display: flex; align-items: center; justify-content: center; }
 .vbar {
-  position: absolute; left: 0; right: 0; height: 26px;
+  position: absolute; height: 26px;
+  /* clipped to the tube's own width — the copper never escapes the object */
+  left: 50%; width: min(96vw, 140vh); transform: translateX(-50%);
   background: var(--vbar, repeating-linear-gradient(to bottom, #3c1404 0 8.3%, #782a06 8.3% 16.6%, #b8480a 16.6% 25%, #e86a10 25% 33.3%, #ffa030 33.3% 41.6%, #ffd880 41.6% 50%, #ffffff 50% 58.3%, #ffd880 58.3% 66.6%, #ffa030 66.6% 75%, #e86a10 75% 83.3%, #b8480a 83.3% 91.6%, #782a06 91.6% 100%));
   box-shadow: 0 0 12px var(--vbar-glow, rgba(230, 90, 30, 0.2));
   display: none;
