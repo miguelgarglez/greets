@@ -40,6 +40,6 @@ export function makeScrolltext(name: string): string {
 export function makeGreetz(name: string): string[] {
   const rng = mulberry32(hashName(name) ^ 0xbeef);
   const picks = shuffle(rng, [...CREW]).slice(0, 5);
-  const list = [...picks.slice(0, 2), 'YOU', ...picks.slice(2), 'GREETS.DEV'];
+  const list = [...picks.slice(0, 2), 'YOU', ...picks.slice(2), 'GREETS DEV'];
   return list;
 }
