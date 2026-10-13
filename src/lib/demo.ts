@@ -301,7 +301,10 @@ export class Demo {
     c.fillStyle = 'rgba(4,4,10,0.62)';
     c.fillRect(0, 0, W, H);
     if ((t * 1.5) % 1 < 0.75) {
-      this.tinyText(touch ? '- TAP TO BOOT -' : '- PRESS ANY KEY TO BOOT -', H / 2 + 28, 0, 2);
+      const msg = touch ? '- TAP TO BOOT -' : '- PRESS ANY KEY TO BOOT -';
+      // biggest scale that still fits the raster with margin
+      const s = Math.max(1, Math.floor((W - 16) / this.font.textW(msg, 1) * 2) / 2);
+      this.tinyText(msg, H / 2 + 28, 0, s);
     }
   }
 
