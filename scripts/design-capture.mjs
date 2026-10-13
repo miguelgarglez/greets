@@ -14,7 +14,7 @@ for (const [path, tag, vp, touch] of [
   const p = await ctx.newPage();
   await p.goto(base + path);
   await p.waitForTimeout(2200);
-  if (tag.includes('running')) {
+  if (tag.includes('running') || tag === '07-longname') {
     await p.mouse.click(vp[0] / 2, vp[1] / 2);
     await p.waitForTimeout(4500);
   }
@@ -32,7 +32,7 @@ await p.waitForTimeout(600);
 await p.keyboard.press('Enter');
 await p.waitForTimeout(2600);
 await p.keyboard.press('Space');
-await p.waitForTimeout(20000);
+await p.waitForTimeout(26000);
 await p.close();
 await ctx.close();
 await b.close();

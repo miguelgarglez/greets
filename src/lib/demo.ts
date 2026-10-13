@@ -40,7 +40,6 @@ export class Demo {
   private plasmaPal: Uint32Array;
   private sections: string[];
   private colLetter: Int16Array;
-  private compact: boolean;
 
   constructor(cv: HTMLCanvasElement, a: DemoAssets) {
     cv.width = W; cv.height = H;
@@ -76,7 +75,6 @@ export class Demo {
     this.plasmaImg = new ImageData(W, H);
     this.plasmaPal = this.buildPlasmaPalette(a.ramp);
     this.sections = shuffle(rng, ['classic', 'plasma', 'blitter']);
-    this.compact = cv.getBoundingClientRect().width < 500;
   }
 
   private buildPlasmaPalette(ramp: RampName): Uint32Array {
@@ -120,10 +118,10 @@ export class Demo {
     }
   }
 
-  private copper(t: number, topY = 10, botY = 146) {
+  private copper(t: number, topY = 10, botY = 146, kick = 0) {
     const w = Math.sin(t * 1.7) * 4;
-    this.copperBar(topY + w, t * 3);
-    this.copperBar(botY - w, t * 3 + 3);
+    this.copperBar(topY + w, t * 3 + kick);
+    this.copperBar(botY - w, t * 3 + 3 + kick);
   }
 
   private waveLogo(t: number, cy: number, trail = true) {
@@ -191,18 +189,36 @@ export class Demo {
     }
   }
 
-  renderClassic(t: number, logo = true) {
+  renderClassic(t: number, logo = true, scroll = true) {
     const c = this.ctx;
     c.fillStyle = '#05050a';
     c.fillRect(0, 0, W, H);
     this.starfield(t);
     this.copper(t);
     if (logo) this.waveLogo(t, H * 0.3);
-    if (!this.compact) this.tinyText('- ANOTHER GREETS DEV PRODUCTION -', H * 0.56, t);
-    this.scroller(t);
+    if (scroll) this.scroller(t);
   }
 
   private solidCache = new Map<string, HTMLCanvasElement>();
+  private glyphCache = new Map<string, HTMLCanvasElement>();
+  // a glyph re-tinted in the ramp's hot stop, for additive flashes
+  private hotGlyph(ch: string, scale: number): HTMLCanvasElement {
+    const key = ch + '@' + scale;
+    let cv = this.glyphCache.get(key);
+    if (cv) return cv;
+    const gl = this.font.get(ch);
+    cv = document.createElement('canvas');
+    cv.width = Math.max(1, (gl?.w ?? 4) * scale); cv.height = Math.max(1, (gl?.h ?? 8) * scale);
+    const ctx = cv.getContext('2d')!;
+    ctx.imageSmoothingEnabled = false;
+    if (gl) ctx.drawImage(gl.cv, 0, 0, cv.width, cv.height);
+    ctx.globalCompositeOperation = 'source-in';
+    ctx.fillStyle = this.ramp[6];
+    ctx.fillRect(0, 0, cv.width, cv.height);
+    this.glyphCache.set(key, cv);
+    return cv;
+  }
+
   private solidLogo(color: string): HTMLCanvasElement {
     let cv = this.solidCache.get(color);
     if (cv) return cv;
@@ -218,24 +234,23 @@ export class Demo {
   }
 
   private plasmaMaskCv: HTMLCanvasElement | null = null;
-  // the name as a window cut out of the dark: live plasma shows through the glyphs
-  private plasmaMask() {
-    if (this.plasmaMaskCv) return this.plasmaMaskCv;
-    const cv = document.createElement('canvas');
-    cv.width = W; cv.height = H;
-    const c = cv.getContext('2d')!;
-    c.fillStyle = 'rgba(4,4,10,0.9)';
-    c.fillRect(0, 0, W, H);
-    c.globalCompositeOperation = 'destination-out';
-    c.drawImage(this.logo.cv, (W - this.logo.w) / 2, H * 0.3);
-    this.plasmaMaskCv = cv;
-    return cv;
-  }
-
+  // the name as a window cut out of the dark: live plasma shows through the
+  // glyphs while the field stays near-black. rebuilt each frame so the
+  // window drifts.
   renderPlasma(t: number) {
     this.plasma(t);
     const c = this.ctx;
-    c.drawImage(this.plasmaMask(), 0, 0);
+    if (!this.plasmaMaskCv) {
+      this.plasmaMaskCv = document.createElement('canvas');
+      this.plasmaMaskCv.width = W; this.plasmaMaskCv.height = H;
+    }
+    const m = this.plasmaMaskCv.getContext('2d')!;
+    m.globalCompositeOperation = 'source-over';
+    m.fillStyle = 'rgba(3,3,8,0.96)';
+    m.fillRect(0, 0, W, H);
+    m.globalCompositeOperation = 'destination-out';
+    m.drawImage(this.logo.cv, (W - this.logo.w) / 2, H * 0.3 + Math.sin(t * 1.2) * 6);
+    c.drawImage(this.plasmaMaskCv, 0, 0);
     this.copper(t);
     this.scroller(t, 2, H - 20);
   }
@@ -268,7 +283,6 @@ export class Demo {
   private lastDraftLen = 0;
   private flashStart = -9;
   private flashIdx = -1;
-  private flashCv: HTMLCanvasElement | null = null;
 
   // bios/landing: static starfield + boot text, name typed live
   renderBios(t: number, draft: string) {
@@ -276,9 +290,7 @@ export class Demo {
     c.fillStyle = '#05050a';
     c.fillRect(0, 0, W, H);
     this.starfield(t * 0.15);
-    this.tinyText('GREETS BIOS', 46, t);
-    this.tinyText('TYPE A NAME - PRESS ENTER', 70, t);
-    this.tinyText('A CRACKTRO FOR ANY NAME', 150, t);
+    this.tinyText('TYPE A NAME', 52, t, 2);
     const shown = (draft.toUpperCase() || '').slice(0, 12);
     if (shown.length > this.lastDraftLen) { this.flashStart = t; this.flashIdx = shown.length - 1; }
     this.lastDraftLen = shown.length;
@@ -288,21 +300,16 @@ export class Demo {
     for (const ch of shown) {
       const gl = this.font.get(ch);
       if (!gl) { x += 10; i++; continue; }
-      if (i === this.flashIdx && t - this.flashStart < 0.28) {
-        // the new letter flashes hot for a few frames
-        if (!this.flashCv) this.flashCv = document.createElement('canvas');
-        const fc = this.flashCv;
-        fc.width = gl.w * 2; fc.height = gl.h * 2;
-        const fx = fc.getContext('2d')!;
-        fx.imageSmoothingEnabled = false;
-        fx.drawImage(gl.cv, 0, 0, fc.width, fc.height);
-        fx.globalCompositeOperation = 'source-in';
-        fx.fillStyle = this.ramp[6];
-        fx.fillRect(0, 0, fc.width, fc.height);
-        fx.globalCompositeOperation = 'source-over';
+      const flashing = i === this.flashIdx && t - this.flashStart < 0.28;
+      c.drawImage(gl.cv, x, 96, gl.w * 2, gl.h * 2);
+      if (flashing) {
+        // the new letter glows hot: the same bitmap, modulated
+        const fc = this.hotGlyph(ch, 2);
+        c.globalCompositeOperation = 'lighter';
+        c.globalAlpha = 0.7;
         c.drawImage(fc, x, 96);
-      } else {
-        c.drawImage(gl.cv, x, 96, gl.w * 2, gl.h * 2);
+        c.globalAlpha = 1;
+        c.globalCompositeOperation = 'source-over';
       }
       x += gl.w * 2 + 2;
       i++;
@@ -311,7 +318,8 @@ export class Demo {
       c.fillStyle = '#e8e8ff';
       c.fillRect(x, 96 + 18, 14, 3);
     }
-    this.copper(t, 8, 178);
+    // a keystroke nudges the copper one raster — the machine reacts too
+    this.copper(t, 8, 178, t - this.flashStart < 0.28 ? 4 : 0);
   }
 
   // preboot: the demo, paused and dimmed, waiting for the gesture.
@@ -339,7 +347,7 @@ export class Demo {
       c.fillRect(0, H / 2 - 1, W, 3);
       return;
     }
-    this.renderClassic(0, false);
+    this.renderClassic(0, false, false);
     const o = (u - 0.12) / 0.88;
     const hh = (1 - o) * (H / 2);
     c.fillStyle = '#05050a';
@@ -359,9 +367,9 @@ export class Demo {
   }
 
   // the first beat after boot: the real baked logo lands letter by letter,
-  // each one flashing the ramp's hot color. u is seconds since the slit
-  // opened; t is the section clock, so the last intro frame is pixel-equal
-  // to the first classic frame — no cut.
+  // each one glowing hot over its own chrome. u is seconds since the slit
+  // opened; t is the section clock and the trail is drawn from the first
+  // column, so the last intro frame IS the first classic frame — no cut.
   renderIntro(u: number, t: number) {
     const c = this.ctx;
     c.fillStyle = '#05050a';
@@ -370,16 +378,26 @@ export class Demo {
     this.copper(t);
     const hot = this.solidLogo(this.ramp[6]);
     const x0 = (W - this.logo.w) / 2;
+    const draws = [{ d: -0.11, a: 0.25 }, { d: -0.055, a: 0.45 }, { d: 0, a: 1 }];
     for (let x = 0; x < this.logo.w; x++) {
       const li = this.colLetter[x];
       if (li < 0) continue;
       const appear = 0.1 + li * 0.09;
       if (u <= appear) continue;
-      const y = H * 0.3 + Math.sin(t * 2.6 + x * 0.045) * 9;
-      const src = u - appear < 0.22 ? hot : this.logo.cv;
-      c.drawImage(src, x, 0, 1, this.logo.h, x0 + x, y, 1, this.logo.h);
+      for (const { d, a } of draws) {
+        const y = H * 0.3 + Math.sin((t + d) * 2.6 + x * 0.045) * 9;
+        c.globalAlpha = a;
+        c.drawImage(this.logo.cv, x, 0, 1, this.logo.h, x0 + x, y, 1, this.logo.h);
+      }
+      c.globalAlpha = 1;
+      if (u - appear < 0.22) {
+        // hot additive glow over the landing columns — chrome, brighter
+        const y = H * 0.3 + Math.sin(t * 2.6 + x * 0.045) * 9;
+        c.globalCompositeOperation = 'lighter';
+        c.drawImage(hot, x, 0, 1, this.logo.h, x0 + x, y, 1, this.logo.h);
+        c.globalCompositeOperation = 'source-over';
+      }
     }
-    if (!this.compact) this.tinyText('- ANOTHER GREETS DEV PRODUCTION -', H * 0.56, t);
     this.scroller(t);
   }
 
@@ -417,13 +435,13 @@ export class Demo {
     c.fillRect(0, 0, W, H);
     this.starfield(t);
     this.copper(t);
-    // the logo bounces dvd-style with squish + trail, clamped to the band
-    // between the copper bars
+    // the logo bounces dvd-style with trail, clamped to the band between the
+    // copper bars; cosine easing so the turns read as motion, not math
     const lw = this.logo.w, lh = this.logo.h;
     const yTop = 42, yBot = Math.max(yTop + 8, 140 - lh);
-    const bh = yBot - yTop;
-    const bounceX = (tt: number) => Math.abs(((tt * 80) % (2 * (W - lw))) - (W - lw));
-    const bounceY = (tt: number) => yTop + Math.abs(((tt * 55) % (2 * bh)) - bh);
+    const bh = yBot - yTop, bw = W - lw;
+    const bounceX = (tt: number) => bw * (0.5 - 0.5 * Math.cos(tt * 80 * Math.PI / bw));
+    const bounceY = (tt: number) => yTop + bh * (0.5 - 0.5 * Math.cos(tt * 55 * Math.PI / bh));
     for (const [d, a] of [[-0.09, 0.2], [-0.045, 0.4]] as const) {
       c.globalAlpha = a;
       c.drawImage(this.logo.cv, bounceX(t + d), bounceY(t + d));

@@ -69,7 +69,13 @@ export default function App() {
           const u = (now - powerRef.current.started) / 350;
           demo.renderPreboot(t, navigator.maxTouchPoints > 0);
           demo.wipe(u);
-          if (u >= 1) setPhase('preboot');
+          if (u >= 1) {
+            // enter IS the key — the wipe hands straight to the beam
+            powerRef.current.started = now;
+            const d = deckRef.current;
+            if (d) { void d.ctx.resume(); d.play(); }
+            setPhase('poweron');
+          }
         }
         else if (ph === 'preboot') demo.renderPreboot(t, navigator.maxTouchPoints > 0);
         else if (ph === 'poweron') {
