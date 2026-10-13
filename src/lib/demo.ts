@@ -39,12 +39,14 @@ export class Demo {
   private plasmaImg: ImageData;
   private plasmaPal: Uint32Array;
   private sections: string[];
+  private name: string;
 
   constructor(cv: HTMLCanvasElement, a: DemoAssets) {
     cv.width = W; cv.height = H;
     this.ctx = cv.getContext('2d')!;
     this.ctx.imageSmoothingEnabled = false;
     this.font = a.font;
+    this.name = a.name;
     this.ramp = RAMPS[a.ramp];
     this.scrolltext = a.scrolltext;
     const rng = mulberry32(a.seed);
@@ -166,15 +168,15 @@ export class Demo {
   // ---------- sections ----------
 
   // tiny centered line of pixel text inside the demo frame
-  private tinyText(str: string, y: number, t: number) {
+  private tinyText(str: string, y: number, t: number, scale = 1) {
     const c = this.ctx;
-    let x = (W - this.font.textW(str, 0)) / 2;
+    let x = (W - this.font.textW(str, 0) * scale) / 2;
     for (const ch of str) {
       const gl = this.font.get(ch);
-      if (!gl) { x += 5; continue; }
-      const bob = Math.sin(t * 2 + x * 0.08) * 1;
-      c.drawImage(gl.cv, x, y + bob, gl.w, gl.h);
-      x += gl.w + 1;
+      if (!gl) { x += 5 * scale; continue; }
+      const bob = Math.sin(t * 2 + x * 0.08) * scale;
+      c.drawImage(gl.cv, x, y + bob, gl.w * scale, gl.h * scale);
+      x += gl.w * scale + scale;
     }
   }
 
@@ -253,8 +255,8 @@ export class Demo {
     c.fillStyle = '#05050a';
     c.fillRect(0, 0, W, H);
     this.starfield(t * 0.15);
-    this.tinyText('GREETS BIOS v1.0', 30, t);
-    this.tinyText('TYPE A NAME - PRESS ENTER', 58, t);
+    this.tinyText('GREETS BIOS', 46, t);
+    this.tinyText('TYPE A NAME - PRESS ENTER', 70, t);
     this.tinyText('A CRACKTRO FOR ANY NAME', 150, t);
     const shown = (draft.toUpperCase() || '').slice(0, 12);
     if (shown.length > this.lastDraftLen) { this.flashStart = t; this.flashIdx = shown.length - 1; }
@@ -299,25 +301,83 @@ export class Demo {
     c.fillStyle = 'rgba(4,4,10,0.62)';
     c.fillRect(0, 0, W, H);
     if ((t * 1.5) % 1 < 0.75) {
-      this.tinyText(touch ? '- TAP TO BOOT -' : '- PRESS ANY KEY TO BOOT -', H / 2 + 30, 0);
+      this.tinyText(touch ? '- TAP TO BOOT -' : '- PRESS ANY KEY TO BOOT -', H / 2 + 28, 0, 2);
     }
   }
 
-  // crt power-on: u 0..1 — dot → horizontal line → full frame
+  // crt power-on: the beam collapses in, then the slit opens into the demo
   renderPowerOn(u: number) {
+    const c = this.ctx;
+    if (u < 0.12) {
+      c.fillStyle = '#05050a';
+      c.fillRect(0, 0, W, H);
+      c.fillStyle = '#ffffff';
+      c.fillRect(0, H / 2 - 1, W, 3);
+      return;
+    }
+    this.renderClassic(0);
+    const o = (u - 0.12) / 0.88;
+    const hh = (1 - o) * (H / 2);
+    c.fillStyle = '#05050a';
+    c.fillRect(0, 0, W, hh);
+    c.fillRect(0, H - hh, W, hh);
+    if (hh > 0.5) {
+      c.fillStyle = this.ramp[7];
+      c.fillRect(0, hh - 1, W, 1);
+      c.fillRect(0, H - hh, W, 1);
+    }
+  }
+
+  // prefers-reduced-motion: one frozen frame, honestly labelled
+  renderReduced() {
+    this.renderClassic(2);
+    this.tinyText('- MOTION OFF -', H * 0.78, 0);
+  }
+
+  // the first beat after boot: the name lands letter by letter, each one
+  // flashing hot the way keystrokes do in the BIOS
+  renderIntro(t: number) {
     const c = this.ctx;
     c.fillStyle = '#05050a';
     c.fillRect(0, 0, W, H);
-    const e = 1 - Math.pow(1 - u, 3);
-    if (u < 0.35) {
-      const lw = e * W * 1.2;
-      c.fillStyle = '#ffffff';
-      c.fillRect(W / 2 - lw / 2, H / 2 - 1, lw, 2);
-    } else {
-      const hh = ((u - 0.35) / 0.65) * (H / 2);
-      c.fillStyle = '#dcdcff';
-      c.fillRect(0, H / 2 - hh, W, hh * 2);
-    }
+    this.starfield(t);
+    this.copper(t);
+    const s = this.name.length <= 7 ? 4 : this.name.length <= 10 ? 3 : 2;
+    const spacing = Math.round(this.font.px * s * 0.12);
+    // fit inside the same safe area the baked logo uses
+    let total = 0;
+    for (const ch of this.name.toUpperCase()) total += (this.font.get(ch)?.w ?? this.font.px * 0.5) * s + spacing;
+    const f = Math.min(1, this.logo.w / Math.max(1, total - spacing));
+    let x = (W - (total - spacing) * f) / 2;
+    const chars = [...this.name.toUpperCase()];
+    chars.forEach((ch, i) => {
+      const gl = this.font.get(ch);
+      const w = gl ? gl.w * s : this.font.px * 0.5 * s;
+      const appear = 0.1 + i * 0.09;
+      if (t > appear && gl) {
+        const y = H * 0.3 + Math.sin(t * 2.6 + x * 0.045) * 9;
+        const gw = gl.w * s * f, gh = gl.h * s * f;
+        if (t - appear < 0.22) {
+          if (!this.flashCv) this.flashCv = document.createElement('canvas');
+          const fc = this.flashCv;
+          fc.width = Math.max(1, gw); fc.height = Math.max(1, gh);
+          const fx = fc.getContext('2d')!;
+          fx.imageSmoothingEnabled = false;
+          fx.drawImage(gl.cv, 0, 0, fc.width, fc.height);
+          fx.globalCompositeOperation = 'source-in';
+          fx.fillStyle = this.ramp[7];
+          fx.fillRect(0, 0, fc.width, fc.height);
+          fx.globalCompositeOperation = 'source-over';
+          c.drawImage(fc, x, y);
+        } else {
+          // once landed it joins the wave
+          c.drawImage(gl.cv, x, y, gw, gh);
+        }
+      }
+      x += (w + spacing) * f;
+    });
+    this.tinyText('- ANOTHER GREETS DEV PRODUCTION -', H * 0.56, t);
+    this.scroller(t);
   }
 
   renderLoop(t: number, greetz: string[]) {

@@ -40,7 +40,7 @@ export default function App() {
   // the demo engine lives outside react; draft flows in via ref
   const draftRef = useRef(draft);
   draftRef.current = draft;
-  const powerRef = useRef({ started: 0 });
+  const powerRef = useRef({ started: 0, done: 0 });
 
   useEffect(() => {
     let stop = false;
@@ -60,15 +60,19 @@ export default function App() {
         if (stop) return;
         const t = (now - t0) / 1000;
         const ph = phaseRef.current;
-        if (REDUCED && ph === 'running') { demo.renderClassic(2); return; }
+        if (REDUCED && ph === 'running') { demo.renderReduced(); return; }
         if (ph === 'landing') demo.renderBios(t, draftRef.current);
         else if (ph === 'preboot') demo.renderPreboot(t, navigator.maxTouchPoints > 0);
         else if (ph === 'poweron') {
           const u = (now - powerRef.current.started) / 600;
-          if (u >= 1) { setPhase('running'); }
+          if (u >= 1) { powerRef.current.done = now; setPhase('running'); }
           else demo.renderPowerOn(u);
         }
-        else demo.renderLoop(t, greetz);
+        else {
+          const sinceBoot = (now - powerRef.current.done) / 1000;
+          if (sinceBoot < 1.4) demo.renderIntro(sinceBoot);
+          else demo.renderLoop(t, greetz);
+        }
         if (!(REDUCED && ph === 'running')) raf = requestAnimationFrame(frame);
       };
       raf = requestAnimationFrame(frame);
