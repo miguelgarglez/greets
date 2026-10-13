@@ -24,8 +24,8 @@ function rampFor(name: string): RampName {
 // hard copper stripes, matching the raster's copperBar bands (dark -> hot -> dark)
 function vbarGradient(ramp: RampName): string {
   const r = RAMPS[ramp];
-  const sym = [r[1], r[2], r[3], r[4], r[5], r[6], r[7], r[6], r[5], r[4], r[3], r[2]];
-  const stops = sym.map((c, i) => `${c} ${(i * 100 / 12).toFixed(1)}% ${((i + 1) * 100 / 12).toFixed(1)}%`);
+  const sym = [r[2], r[3], r[4], r[6], r[6], r[4], r[3], r[2]];
+  const stops = sym.map((c, i) => `${c} ${(i * 100 / 8).toFixed(1)}% ${((i + 1) * 100 / 8).toFixed(1)}%`);
   return `linear-gradient(to bottom, ${stops.join(', ')})`;
 }
 
