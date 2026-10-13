@@ -30,25 +30,21 @@ export interface DemoAssets {
 interface Star { x: number; y: number; z: number }
 
 export class Demo {
-  private cv: HTMLCanvasElement;
   private ctx: CanvasRenderingContext2D;
   private font: PixelFont;
   private logo: { cv: HTMLCanvasElement; w: number; h: number };
   private stars: Star[];
   private ramp: string[];
-  private seed: number;
   private scrolltext: string;
   private plasmaImg: ImageData;
   private plasmaPal: Uint32Array;
   private sections: string[];
 
   constructor(cv: HTMLCanvasElement, a: DemoAssets) {
-    this.cv = cv;
     cv.width = W; cv.height = H;
     this.ctx = cv.getContext('2d')!;
     this.ctx.imageSmoothingEnabled = false;
     this.font = a.font;
-    this.seed = a.seed;
     this.ramp = RAMPS[a.ramp];
     this.scrolltext = a.scrolltext;
     const rng = mulberry32(a.seed);
@@ -233,6 +229,72 @@ export class Demo {
       }
     });
     this.scroller(t);
+  }
+
+  // bios/landing: static starfield + boot text, name typed live
+  renderBios(t: number, draft: string) {
+    const c = this.ctx;
+    c.fillStyle = '#05050a';
+    c.fillRect(0, 0, W, H);
+    this.starfield(t * 0.15);
+    this.tinyText('GREETS BIOS v1.0', 30, t);
+    this.tinyText('TYPE A NAME - PRESS ENTER', 58, t);
+    // the draft in big letters, cursor blinking
+    const shown = (draft.toUpperCase() || '').slice(0, 12);
+    const w = this.font.textW(shown, 0) * 2;
+    let x = (W - w) / 2;
+    for (const ch of shown) {
+      const gl = this.font.get(ch);
+      if (!gl) { x += 10; continue; }
+      c.drawImage(gl.cv, x, 96, gl.w * 2, gl.h * 2);
+      x += gl.w * 2 + 2;
+    }
+    if (Math.floor(t * 2) % 2 === 0) {
+      c.fillStyle = '#e8e8ff';
+      c.fillRect(x, 96 + 18, 14, 3);
+    }
+    this.copper(t, 8, 178);
+  }
+
+  // preboot: the demo, paused and dimmed, waiting for the gesture
+  renderPreboot(t: number) {
+    this.renderClassic(0);
+    const c = this.ctx;
+    c.fillStyle = 'rgba(4,4,10,0.62)';
+    c.fillRect(0, 0, W, H);
+    if (Math.floor(t * 1.6) % 2 === 0) {
+      this.tinyText('- PRESS ANY KEY TO BOOT -', H / 2 + 30, 0);
+    }
+    this.tinyText('GREETS BIOS READY', 26, t);
+  }
+
+  // crt power-on: u 0..1 — dot → horizontal line → full frame
+  renderPowerOn(u: number) {
+    const c = this.ctx;
+    c.fillStyle = '#05050a';
+    c.fillRect(0, 0, W, H);
+    const e = 1 - Math.pow(1 - u, 3);
+    if (u < 0.35) {
+      const lw = e * W * 1.2;
+      c.fillStyle = '#ffffff';
+      c.fillRect(W / 2 - lw / 2, H / 2 - 1, lw, 2);
+    } else {
+      const hh = ((u - 0.35) / 0.65) * (H / 2);
+      c.fillStyle = '#dcdcff';
+      c.fillRect(0, H / 2 - hh, W, hh * 2);
+    }
+  }
+
+  renderLoop(t: number, greetz: string[]) {
+    const i = Math.floor(t / 9) % (this.sections.length + 1);
+    const lt = t - Math.floor(t / 9) * 9;
+    if (i === this.sections.length) this.renderGreetz(lt, greetz);
+    else {
+      const s = this.sections[i];
+      if (s === 'classic') this.renderClassic(lt);
+      else if (s === 'plasma') this.renderPlasma(lt);
+      else this.renderBlitter(lt);
+    }
   }
 
   renderBlitter(t: number) {

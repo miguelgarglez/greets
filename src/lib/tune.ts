@@ -17,7 +17,6 @@ export const ROWS = 32;
 export const CH = 4;
 
 const MIN_PENT = [0, 3, 5, 7, 10];
-const NAT_MIN = [0, 2, 3, 5, 7, 8, 10];
 // classic tracker progressions as scale degrees of natural minor (semitones from root, quality)
 const PROGS: { deg: number; maj: boolean }[][] = [
   [{ deg: 0, maj: false }, { deg: 8, maj: true }, { deg: 3, maj: true }, { deg: 10, maj: true }], // i VI III VII
