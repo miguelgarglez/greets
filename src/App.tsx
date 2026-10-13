@@ -14,16 +14,19 @@ function pathName(): string | null {
   return s || null;
 }
 
-type Phase = 'landing' | 'preboot' | 'poweron' | 'running';
+type Phase = 'landing' | 'toboot' | 'preboot' | 'poweron' | 'running';
 const REDUCED = typeof matchMedia !== 'undefined' && matchMedia('(prefers-reduced-motion: reduce)').matches;
 
 // the seeded copper ramp, also worn by the void bars outside the tube
 function rampFor(name: string): RampName {
   return pick(mulberry32(hashName(name) ^ 0xface), Object.keys(RAMPS)) as RampName;
 }
+// hard copper stripes, matching the raster's copperBar bands (dark -> hot -> dark)
 function vbarGradient(ramp: RampName): string {
   const r = RAMPS[ramp];
-  return `linear-gradient(to bottom, ${r[0]}, ${r[2]}, ${r[4]}, ${r[r.length - 2]}, ${r[4]}, ${r[2]}, ${r[0]})`;
+  const sym = [r[1], r[2], r[3], r[4], r[5], r[6], r[7], r[6], r[5], r[4], r[3], r[2]];
+  const stops = sym.map((c, i) => `${c} ${(i * 100 / 12).toFixed(1)}% ${((i + 1) * 100 / 12).toFixed(1)}%`);
+  return `linear-gradient(to bottom, ${stops.join(', ')})`;
 }
 
 
@@ -62,6 +65,12 @@ export default function App() {
         const ph = phaseRef.current;
         if (REDUCED && ph === 'running') { demo.renderReduced(); return; }
         if (ph === 'landing') demo.renderBios(t, draftRef.current);
+        else if (ph === 'toboot') {
+          const u = (now - powerRef.current.started) / 350;
+          demo.renderPreboot(t, navigator.maxTouchPoints > 0);
+          demo.wipe(u);
+          if (u >= 1) setPhase('preboot');
+        }
         else if (ph === 'preboot') demo.renderPreboot(t, navigator.maxTouchPoints > 0);
         else if (ph === 'poweron') {
           const u = (now - powerRef.current.started) / 600;
@@ -70,7 +79,8 @@ export default function App() {
         }
         else {
           const sinceBoot = (now - powerRef.current.done) / 1000;
-          if (sinceBoot < 1.4) demo.renderIntro(sinceBoot);
+          const lt = t - Math.floor(t / 9) * 9;
+          if (sinceBoot < 1.4) demo.renderIntro(sinceBoot, lt);
           else demo.renderLoop(t, greetz);
         }
         if (!(REDUCED && ph === 'running')) raf = requestAnimationFrame(frame);
@@ -88,6 +98,7 @@ export default function App() {
       if (phaseRef.current === 'preboot') {
         powerRef.current.started = performance.now();
         setPhase('poweron');
+        if (!REDUCED) navigator.vibrate?.(18);
         const d = deckRef.current;
         if (d) { void d.ctx.resume(); d.play(); }
       }
@@ -111,7 +122,8 @@ export default function App() {
     if (!s) return;
     history.pushState(null, '', '/' + encodeURIComponent(s.toLowerCase()));
     setName(s);
-    setPhase('preboot');
+    powerRef.current.started = performance.now();
+    setPhase('toboot');
   };
 
   return (

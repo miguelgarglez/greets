@@ -57,7 +57,7 @@ export async function loadPixelFont(px = 8): Promise<PixelFont> {
 
 // bake a colored logo strip: every char upscaled `scale`× with a vertical
 // two-stop gradient (classic cracktro shading), returns one canvas + column map
-export function bakeLogo(font: PixelFont, text: string, scale: number, stops: [number, string][]): { cv: HTMLCanvasElement; w: number; h: number } {
+export function bakeLogo(font: PixelFont, text: string, scale: number, stops: [number, string][]): { cv: HTMLCanvasElement; w: number; h: number; spans: [number, number][] } {
   const spacing = Math.round(font.px * scale * 0.12);
   const chars = [...text.toUpperCase()].map((c) => font.get(c));
   const w = chars.reduce((a, g) => a + (g?.w ?? font.px * 0.5) * scale + spacing, 0) - spacing;
@@ -66,9 +66,10 @@ export function bakeLogo(font: PixelFont, text: string, scale: number, stops: [n
   cv.width = Math.ceil(w); cv.height = Math.ceil(h);
   const ctx = cv.getContext('2d')!;
   ctx.imageSmoothingEnabled = false;
+  const spans: [number, number][] = [];
   let x = 0;
   for (const g of chars) {
-    if (!g) { x += font.px * 0.5 * scale + spacing; continue; }
+    if (!g) { x += font.px * 0.5 * scale + spacing; spans.push([-1, -1]); continue; }
     // draw upscaled then paint the gradient over the ink
     const tmp = document.createElement('canvas');
     tmp.width = g.w * scale; tmp.height = g.h * scale;
@@ -81,7 +82,8 @@ export function bakeLogo(font: PixelFont, text: string, scale: number, stops: [n
     tc.fillStyle = grad;
     tc.fillRect(0, 0, tmp.width, tmp.height);
     ctx.drawImage(tmp, x, (h - tmp.height) / 2);
+    spans.push([x, x + tmp.width]);
     x += tmp.width + spacing;
   }
-  return { cv, w, h };
+  return { cv, w, h, spans };
 }

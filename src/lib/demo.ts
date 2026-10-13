@@ -39,34 +39,44 @@ export class Demo {
   private plasmaImg: ImageData;
   private plasmaPal: Uint32Array;
   private sections: string[];
-  private name: string;
+  private colLetter: Int16Array;
+  private compact: boolean;
 
   constructor(cv: HTMLCanvasElement, a: DemoAssets) {
     cv.width = W; cv.height = H;
     this.ctx = cv.getContext('2d')!;
     this.ctx.imageSmoothingEnabled = false;
     this.font = a.font;
-    this.name = a.name;
     this.ramp = RAMPS[a.ramp];
     this.scrolltext = a.scrolltext;
     const rng = mulberry32(a.seed);
     this.stars = Array.from({ length: 150 }, () => ({ x: rng() * W, y: rng() * H, z: pick(rng, [0.25, 0.55, 1]) }));
     let scale = a.name.length <= 7 ? 4 : a.name.length <= 10 ? 3 : 2;
-    let logo = bakeLogo(a.font, a.name, scale, [[0, '#ffffff'], [0.55, '#e8e8ff'], [0.8, this.ramp[4]], [1, this.ramp[2]]]);
+    const baked = bakeLogo(a.font, a.name, scale, [[0, '#ffffff'], [0.55, '#e8e8ff'], [0.8, this.ramp[4]], [1, this.ramp[2]]]);
+    let logo: { cv: HTMLCanvasElement; w: number; h: number };
     // the name must always land inside the glass, trail included
-    if (logo.w > 288) {
-      const f = 288 / logo.w;
+    if (baked.w > 288) {
+      const f = 288 / baked.w;
       const cv = document.createElement('canvas');
-      cv.width = 288; cv.height = Math.round(logo.h * f);
+      cv.width = 288; cv.height = Math.round(baked.h * f);
       const c = cv.getContext('2d')!;
       c.imageSmoothingEnabled = false;
-      c.drawImage(logo.cv, 0, 0, 288, cv.height);
+      c.drawImage(baked.cv, 0, 0, 288, cv.height);
       logo = { cv, w: 288, h: cv.height };
+      for (const s of baked.spans) { s[0] *= f; s[1] *= f; }
+    } else {
+      logo = { cv: baked.cv, w: baked.w, h: baked.h };
     }
     this.logo = logo;
+    // letter index for every logo column — the intro reveals the logo per letter
+    this.colLetter = new Int16Array(Math.ceil(logo.w)).fill(-1);
+    baked.spans.forEach(([x0, x1], i) => {
+      for (let x = Math.round(x0); x < Math.round(x1) && x < this.colLetter.length; x++) this.colLetter[x] = i;
+    });
     this.plasmaImg = new ImageData(W, H);
     this.plasmaPal = this.buildPlasmaPalette(a.ramp);
     this.sections = shuffle(rng, ['classic', 'plasma', 'blitter']);
+    this.compact = cv.getBoundingClientRect().width < 500;
   }
 
   private buildPlasmaPalette(ramp: RampName): Uint32Array {
@@ -187,7 +197,7 @@ export class Demo {
     this.starfield(t);
     this.copper(t);
     if (logo) this.waveLogo(t, H * 0.3);
-    this.tinyText('- ANOTHER GREETS DEV PRODUCTION -', H * 0.56, t);
+    if (!this.compact) this.tinyText('- ANOTHER GREETS DEV PRODUCTION -', H * 0.56, t);
     this.scroller(t);
   }
 
@@ -206,16 +216,26 @@ export class Demo {
     return cv;
   }
 
+  private plasmaMaskCv: HTMLCanvasElement | null = null;
+  // the name as a window cut out of the dark: live plasma shows through the glyphs
+  private plasmaMask() {
+    if (this.plasmaMaskCv) return this.plasmaMaskCv;
+    const cv = document.createElement('canvas');
+    cv.width = W; cv.height = H;
+    const c = cv.getContext('2d')!;
+    c.fillStyle = 'rgba(4,4,10,0.9)';
+    c.fillRect(0, 0, W, H);
+    c.globalCompositeOperation = 'destination-out';
+    c.drawImage(this.logo.cv, (W - this.logo.w) / 2, H * 0.3);
+    this.plasmaMaskCv = cv;
+    return cv;
+  }
+
   renderPlasma(t: number) {
     this.plasma(t);
-    // the name carved out of the plasma: hot outline, black fill
     const c = this.ctx;
-    const x0 = (W - this.logo.w) / 2, y0 = (H - this.logo.h) / 2 + Math.sin(t * 1.2) * 6;
-    const hot = this.solidLogo(this.ramp[this.ramp.length - 2]);
-    for (const [dx, dy] of [[-2, 0], [2, 0], [0, -2], [0, 2], [-2, -2], [2, 2], [-2, 2], [2, -2]] as const)
-      c.drawImage(hot, x0 + dx, y0 + dy);
-    c.drawImage(this.solidLogo('#050508'), x0, y0);
-    this.copper(t, 8, 162);
+    c.drawImage(this.plasmaMask(), 0, 0);
+    this.copper(t);
     this.scroller(t, 2, H - 20);
   }
 
@@ -223,7 +243,6 @@ export class Demo {
     const c = this.ctx;
     c.fillStyle = '#05050a';
     c.fillRect(0, 0, W, H);
-    this.copper(t, 6, 168);
     const lineH = 22;
     const total = greetz.length * lineH;
     const off = (t * 34) % (total + H) - lineH;
@@ -241,6 +260,7 @@ export class Demo {
         x += gl.w * scale + 2;
       }
     });
+    this.copper(t);
     this.scroller(t);
   }
 
@@ -294,9 +314,9 @@ export class Demo {
   }
 
   // preboot: the demo, paused and dimmed, waiting for the gesture.
-  // one blinking boot line and nothing else
+  // one blinking boot line and nothing else — the name hasn't arrived yet
   renderPreboot(t: number, touch = false) {
-    this.renderClassic(0);
+    this.renderClassic(0, false);
     const c = this.ctx;
     c.fillStyle = 'rgba(4,4,10,0.62)';
     c.fillRect(0, 0, W, H);
@@ -337,49 +357,28 @@ export class Demo {
     this.tinyText('- MOTION OFF -', H * 0.78, 0);
   }
 
-  // the first beat after boot: the name lands letter by letter, each one
-  // flashing hot the way keystrokes do in the BIOS
-  renderIntro(t: number) {
+  // the first beat after boot: the real baked logo lands letter by letter,
+  // each one flashing the ramp's hot color. u is seconds since the slit
+  // opened; t is the section clock, so the last intro frame is pixel-equal
+  // to the first classic frame — no cut.
+  renderIntro(u: number, t: number) {
     const c = this.ctx;
     c.fillStyle = '#05050a';
     c.fillRect(0, 0, W, H);
     this.starfield(t);
     this.copper(t);
-    const s = this.name.length <= 7 ? 4 : this.name.length <= 10 ? 3 : 2;
-    const spacing = Math.round(this.font.px * s * 0.12);
-    // fit inside the same safe area the baked logo uses
-    let total = 0;
-    for (const ch of this.name.toUpperCase()) total += (this.font.get(ch)?.w ?? this.font.px * 0.5) * s + spacing;
-    const f = Math.min(1, this.logo.w / Math.max(1, total - spacing));
-    let x = (W - (total - spacing) * f) / 2;
-    const chars = [...this.name.toUpperCase()];
-    chars.forEach((ch, i) => {
-      const gl = this.font.get(ch);
-      const w = gl ? gl.w * s : this.font.px * 0.5 * s;
-      const appear = 0.1 + i * 0.09;
-      if (t > appear && gl) {
-        const y = H * 0.3 + Math.sin(t * 2.6 + x * 0.045) * 9;
-        const gw = gl.w * s * f, gh = gl.h * s * f;
-        if (t - appear < 0.22) {
-          if (!this.flashCv) this.flashCv = document.createElement('canvas');
-          const fc = this.flashCv;
-          fc.width = Math.max(1, gw); fc.height = Math.max(1, gh);
-          const fx = fc.getContext('2d')!;
-          fx.imageSmoothingEnabled = false;
-          fx.drawImage(gl.cv, 0, 0, fc.width, fc.height);
-          fx.globalCompositeOperation = 'source-in';
-          fx.fillStyle = this.ramp[7];
-          fx.fillRect(0, 0, fc.width, fc.height);
-          fx.globalCompositeOperation = 'source-over';
-          c.drawImage(fc, x, y);
-        } else {
-          // once landed it joins the wave
-          c.drawImage(gl.cv, x, y, gw, gh);
-        }
-      }
-      x += (w + spacing) * f;
-    });
-    this.tinyText('- ANOTHER GREETS DEV PRODUCTION -', H * 0.56, t);
+    const hot = this.solidLogo(this.ramp[6]);
+    const x0 = (W - this.logo.w) / 2;
+    for (let x = 0; x < this.logo.w; x++) {
+      const li = this.colLetter[x];
+      if (li < 0) continue;
+      const appear = 0.1 + li * 0.09;
+      if (u <= appear) continue;
+      const y = H * 0.3 + Math.sin(t * 2.6 + x * 0.045) * 9;
+      const src = u - appear < 0.22 ? hot : this.logo.cv;
+      c.drawImage(src, x, 0, 1, this.logo.h, x0 + x, y, 1, this.logo.h);
+    }
+    if (!this.compact) this.tinyText('- ANOTHER GREETS DEV PRODUCTION -', H * 0.56, t);
     this.scroller(t);
   }
 
@@ -394,18 +393,21 @@ export class Demo {
       else this.renderBlitter(lt);
     }
     // sections never teleport: a copper-clock wipe reveals the new frame
-    const u = lt / 0.45;
-    if (u < 1) {
-      const c = this.ctx;
-      const half = Math.round((1 - u) * W * 0.55);
-      c.fillStyle = '#05050a';
-      c.fillRect(0, 0, half, H);
-      c.fillRect(W - half, 0, half, H);
-      const e = this.ramp[4];
-      c.fillStyle = e;
-      c.fillRect(half, 0, 2, H);
-      c.fillRect(W - half - 2, 0, 2, H);
-    }
+    this.wipe(lt / 0.45);
+  }
+
+  // dark shutters parting from center, edged with the ramp — one transition
+  // grammar for section changes and the landing -> preboot beat
+  wipe(u: number) {
+    if (u >= 1) return;
+    const c = this.ctx;
+    const half = Math.round((1 - u) * W * 0.55);
+    c.fillStyle = '#05050a';
+    c.fillRect(0, 0, half, H);
+    c.fillRect(W - half, 0, half, H);
+    c.fillStyle = this.ramp[4];
+    c.fillRect(half, 0, 2, H);
+    c.fillRect(W - half - 2, 0, 2, H);
   }
 
   renderBlitter(t: number) {
@@ -413,19 +415,20 @@ export class Demo {
     c.fillStyle = '#05050a';
     c.fillRect(0, 0, W, H);
     this.starfield(t);
-    this.copper(t, 6, 168);
-    // the logo bounces dvd-style with squish + trail
+    this.copper(t);
+    // the logo bounces dvd-style with squish + trail, clamped to the band
+    // between the copper bars
     const lw = this.logo.w, lh = this.logo.h;
-    const bx = Math.abs(((t * 80) % (2 * (W - lw))) - (W - lw));
-    const by = Math.abs(((t * 55) % (2 * (H - 60 - lh))) - (H - 60 - lh)) + 10;
+    const yTop = 42, yBot = Math.max(yTop + 8, 140 - lh);
+    const bh = yBot - yTop;
+    const bounceX = (tt: number) => Math.abs(((tt * 80) % (2 * (W - lw))) - (W - lw));
+    const bounceY = (tt: number) => yTop + Math.abs(((tt * 55) % (2 * bh)) - bh);
     for (const [d, a] of [[-0.09, 0.2], [-0.045, 0.4]] as const) {
       c.globalAlpha = a;
-      const px = Math.abs(((t + d) * 80) % (2 * (W - lw)) - (W - lw));
-      const py = Math.abs(((t + d) * 55) % (2 * (H - 60 - lh)) - (H - 60 - lh)) + 10;
-      c.drawImage(this.logo.cv, px, py);
+      c.drawImage(this.logo.cv, bounceX(t + d), bounceY(t + d));
     }
     c.globalAlpha = 1;
-    c.drawImage(this.logo.cv, bx, by);
+    c.drawImage(this.logo.cv, bounceX(t), bounceY(t));
     this.scroller(t);
   }
 }
