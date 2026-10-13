@@ -56,7 +56,7 @@ The orange rules are a stock neon line. None of the nine heroes has one. They ar
 
 The preboot is honest on both frames. The picture is dimmed, the boot line is inside the raster, and that line is white. Its contrast is about 20 to 1. The outside hint in round 1 was about 2.9 to 1, and it described a demo that was already running. The outside line is now the URL alone, at about 7.7 to 1 on the desktop and 7.6 to 1 on the phone. GREETS beside it, or above it on the phone, is brighter, and it is a wordmark.
 
-The phone holds the whole frame. The tube's copper reaches both edges of the glass, about 8px in from the viewport, at the 320×200 aspect. The boot line does not wrap. MIGUEL uses about half the raster width, with a wide margin inside the glass. These stills show that six-letter name. The fit of a longer name is outside these two frames.
+The phone holds the whole frame. The tube's copper reaches both edges of the glass, about 8px in from the viewport, at the 320×200 aspect. The boot line is a single line. MIGUEL uses about half the raster width, with a wide margin inside the glass. These stills show that six-letter name. A longer name is outside these two frames.
 
 ## What is not finished
 
