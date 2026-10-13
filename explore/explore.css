@@ -1,0 +1,146 @@
+@font-face {
+  font-family: 'PS2P';
+  src: url('/fonts/press-start-2p.ttf') format('truetype');
+}
+
+* { margin: 0; box-sizing: border-box; }
+html, body, #root { height: 100%; }
+body { background: #060608; overflow: hidden; font-family: 'PS2P', monospace; }
+
+.demoscreen { width: 100%; height: 100%; display: block; image-rendering: pixelated; }
+
+/* ---------- CRT overlay ---------- */
+.crt { position: absolute; inset: 0; pointer-events: none; }
+.crt-lines {
+  position: absolute; inset: 0;
+  background: repeating-linear-gradient(to bottom, rgba(0,0,0,0.22) 0 1px, transparent 1px 3px);
+}
+.crt-glow {
+  position: absolute; inset: 0;
+  background:
+    radial-gradient(120% 90% at 50% 45%, transparent 55%, rgba(0,0,0,0.55) 100%),
+    linear-gradient(rgba(90,140,255,0.03), rgba(0,0,0,0));
+}
+.crt-flicker {
+  position: absolute; inset: 0; background: #aaccff;
+  opacity: 0; animation: flick 4.7s steps(1) infinite;
+  mix-blend-mode: screen;
+}
+@keyframes flick {
+  0%, 91.9%, 93.1%, 100% { opacity: 0; }
+  92%, 93% { opacity: 0.025; }
+}
+
+/* ---------- A: sanity — the demo is the page ---------- */
+.ga { height: 100%; position: relative; display: flex; align-items: center; justify-content: center; }
+.ga-room {
+  position: absolute; inset: 0;
+  background: radial-gradient(140% 100% at 50% 0%, #10101a 0%, #060608 55%, #030304 100%);
+}
+.ga-tube {
+  position: relative;
+  height: min(88vh, 132vw);
+  aspect-ratio: 320 / 200;
+  border-radius: 8px;
+  overflow: hidden;
+  box-shadow: 0 0 80px rgba(80, 120, 255, 0.10), 0 30px 90px rgba(0,0,0,0.8);
+}
+.ga-chrome {
+  position: absolute; left: 0; right: 0; bottom: 3.4vh;
+  display: flex; justify-content: space-between; align-items: baseline;
+  padding: 0 4vw; color: #8a8ab0; font-size: 11px; letter-spacing: 1px;
+}
+.ga-mark { color: #e8e8ff; }
+.ga-hint { font-size: 8px; color: #55556e; }
+
+/* ---------- B: plasma — marquee + full bleed ---------- */
+.gb { height: 100%; position: relative; display: flex; flex-direction: column; align-items: center; }
+.gb-room {
+  position: absolute; inset: 0;
+  background: radial-gradient(120% 80% at 50% 110%, #0c0814 0%, #060608 60%);
+}
+.gb-strip {
+  position: relative; z-index: 1; margin-top: 5vh; margin-bottom: 2.6vh;
+  padding: 14px 26px;
+  border-top: 3px solid; border-bottom: 3px solid;
+  border-image: repeating-linear-gradient(90deg, #4040c0 0 12px, #202060 12px 24px) 3;
+  background: #0a0a18;
+}
+.gb-title { font-size: clamp(14px, 2.6vw, 26px); color: #f0f0ff; letter-spacing: 3px; text-shadow: 0 3px 0 #281860; }
+.gb-tube {
+  position: relative;
+  height: min(74vh, 108vw);
+  aspect-ratio: 320 / 200;
+  border-radius: 6px; overflow: hidden;
+  box-shadow: 0 0 110px rgba(160, 60, 220, 0.14), 0 30px 90px rgba(0,0,0,0.85);
+}
+.gb-chrome {
+  position: relative; z-index: 1; margin-top: 2.4vh;
+  display: flex; gap: 26px; align-items: baseline;
+  color: #6e5a9a; font-size: 8px; letter-spacing: 2px;
+}
+.gb-hash { color: #b08ae0; }
+
+/* ---------- C: the set — CRT object on a desk ---------- */
+.gc { height: 100%; position: relative; display: flex; align-items: center; justify-content: center; }
+.gc-back {
+  position: absolute; inset: 0;
+  background:
+    radial-gradient(60% 50% at 50% 38%, #14141f 0%, transparent 70%),
+    linear-gradient(#08080c 0 78%, #0d0a08 78% 100%);
+}
+.gc-set { position: relative; display: flex; flex-direction: column; align-items: center; z-index: 1; }
+.gc-bezel {
+  position: relative;
+  padding: 26px 26px 18px;
+  background: linear-gradient(175deg, #26262e 0%, #17171c 60%, #101014 100%);
+  border-radius: 18px;
+  box-shadow:
+    inset 0 2px 0 rgba(255,255,255,0.06),
+    inset 0 -3px 6px rgba(0,0,0,0.6),
+    0 40px 90px rgba(0,0,0,0.9),
+    0 0 60px rgba(90, 110, 255, 0.07);
+}
+.gc-screen {
+  position: relative;
+  width: min(64vw, 96vh * 1.6);
+  max-width: 760px;
+  aspect-ratio: 320 / 200;
+  border-radius: 12px / 16px;
+  overflow: hidden;
+  box-shadow: inset 0 0 24px rgba(0,0,0,0.85), 0 0 30px rgba(110, 140, 255, 0.10);
+}
+.gc-glare {
+  position: absolute; inset: 0; pointer-events: none;
+  background: linear-gradient(115deg, transparent 32%, rgba(255,255,255,0.055) 46%, rgba(255,255,255,0.015) 56%, transparent 68%);
+}
+.gc-chin {
+  display: flex; justify-content: space-between; align-items: center;
+  padding: 14px 8px 0;
+}
+.gc-brand { font-size: 9px; color: #55555e; letter-spacing: 4px; }
+.gc-led {
+  width: 8px; height: 8px; border-radius: 50%;
+  background: #30ff70;
+  box-shadow: 0 0 10px #30ff70, 0 0 3px #30ff70;
+}
+.gc-neck { width: 34%; height: 14px; background: linear-gradient(#101014, #1a1a20); }
+.gc-foot {
+  width: 62%; height: 10px; border-radius: 0 0 12px 12px;
+  background: linear-gradient(#1a1a20, #0c0c10);
+  box-shadow: 0 18px 40px rgba(0,0,0,0.9);
+}
+.gc-floor {
+  position: absolute; left: 0; right: 0; bottom: 0; height: 22%;
+  background: radial-gradient(50% 120% at 50% 0%, rgba(120, 130, 255, 0.05), transparent 70%);
+}
+.gc-tag {
+  position: absolute; bottom: 5vh; left: 50%; transform: translateX(-50%);
+  color: #4a4a58; font-size: 9px; letter-spacing: 3px; z-index: 2;
+}
+
+@media (max-width: 700px) {
+  .ga-chrome { flex-direction: column; gap: 8px; align-items: center; padding: 0 6vw; text-align: center; }
+  .gb-strip { margin-top: 4vh; padding: 10px 14px; }
+  .gc-screen { width: 86vw; }
+}
