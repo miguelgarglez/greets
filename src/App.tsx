@@ -135,7 +135,7 @@ export default function App() {
             value={draft}
             maxLength={14}
             onChange={(e) => setDraft(e.target.value.replace(/[^\p{L}\p{N} '\-_.]/gu, ''))}
-            onKeyDown={(e) => { if (e.key === 'Enter') submit(); }}
+            onKeyDown={(e) => { if (e.key === 'Enter') { e.stopPropagation(); submit(); } }}
           />
         )}
       </div>

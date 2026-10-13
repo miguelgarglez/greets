@@ -35,4 +35,5 @@ await p.keyboard.press('Space');
 await p.waitForTimeout(20000);
 await p.close();
 await ctx.close();
+await b.close();
 console.log('done');
