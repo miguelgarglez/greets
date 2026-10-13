@@ -27,11 +27,11 @@ const CREW = ['FAIRLIGHT', 'RAZOR 1911', 'SCOOPEX', 'SANITY', 'RED SECTOR', 'QUA
 export function makeScrolltext(name: string): string {
   const rng = mulberry32(hashName(name) ^ 0x5eed);
   const parts = [
-    `${pick(rng, OPENERS)} ${name.toUpperCase()} ... `,
-    pick(rng, BOASTS) + ' ... ',
-    `GREETINGS ALSO FLY TO ${shuffle(rng, [...CREW]).slice(0, 4).join(' - ')} ... `,
-    `SHARE THIS ONE - GREETS DEV / ${name.toUpperCase()} ... `,
-    pick(rng, BOASTS) + ' ... ',
+    `${pick(rng, OPENERS)} ${name.toUpperCase()} +++ `,
+    pick(rng, BOASTS) + ' +++ ',
+    `GREETINGS ALSO FLY TO ${shuffle(rng, [...CREW]).slice(0, 4).join(' - ')} +++ `,
+    `SHARE THIS ONE - GREETS DEV / ${name.toUpperCase()} +++ `,
+    pick(rng, BOASTS) + ' +++ ',
     pick(rng, CLOSERS) + '     ',
   ];
   return parts.join('').toUpperCase();

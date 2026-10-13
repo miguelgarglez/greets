@@ -79,12 +79,22 @@ export class Demo {
 
   private buildPlasmaPalette(ramp: RampName): Uint32Array {
     const r = RAMPS[ramp];
+    // cross a cold ramp through the low indices so the field carries a second
+    // hue — letters cut into it read as plasma, not dyed type
+    const cold = RAMPS[ramp === 'ice' ? 'blue' : 'ice'];
     const pal = new Uint32Array(64);
+    const hex = (s: string) => parseInt(s.slice(1), 16);
     for (let i = 0; i < 64; i++) {
       // skip the two darkest stops or the field reads as mud
       const f = 2 + i / 63 * (r.length - 3);
-      const c = r[Math.round(f)];
-      const n = parseInt(c.slice(1), 16);
+      const w = hex(r[Math.round(f)]);
+      const d = hex(cold[Math.round(f)]);
+      // low values lean cold, highs lean to the name's ramp
+      const k = Math.min(1, Math.max(0, (i - 12) / 40));
+      const mix = (a: number, b: number) => Math.round(a + (b - a) * k);
+      const n = (mix(w >> 16 & 0xff, d >> 16 & 0xff) << 16)
+        | (mix(w >> 8 & 0xff, d >> 8 & 0xff) << 8)
+        | mix(w & 0xff, d & 0xff);
       pal[i] = 0xff000000 | ((n & 0xff) << 16) | (n & 0xff00) | ((n >> 16) & 0xff);
     }
     return pal;
@@ -118,10 +128,10 @@ export class Demo {
     }
   }
 
-  private copper(t: number, topY = 10, botY = 146, kick = 0) {
+  private copper(t: number, topY = 10, botY = 146, kick = 0, dy = 0) {
     const w = Math.sin(t * 1.7) * 4;
-    this.copperBar(topY + w, t * 3 + kick);
-    this.copperBar(botY - w, t * 3 + 3 + kick);
+    this.copperBar(topY + w + dy, t * 3 + kick);
+    this.copperBar(botY - w - dy, t * 3 + 3 + kick);
   }
 
   private waveLogo(t: number, cy: number, trail = true) {
@@ -138,7 +148,7 @@ export class Demo {
     c.globalAlpha = 1;
   }
 
-  private scroller(t: number, scale = 2, yBase = H - 20) {
+  private scroller(t: number, scale = 2, yBase = H - 24) {
     const c = this.ctx;
     const speed = 55;
     const adv = this.font.px * scale * 1.0;
@@ -176,13 +186,22 @@ export class Demo {
 
   // ---------- sections ----------
 
+  // drawn width of a string at a scale — glyph widths plus the tracking the
+  // draw loop actually adds, so centering and scale-fitting measure the real
+  // raster span instead of underestimating
+  private drawnW(str: string, scale: number): number {
+    let w = 0;
+    for (const ch of str) w += (this.font.get(ch)?.w ?? this.font.px * 0.5) * scale + scale;
+    return Math.max(0, w - scale);
+  }
+
   // tiny centered line of pixel text inside the demo frame
   private tinyText(str: string, y: number, t: number, scale = 1) {
     const c = this.ctx;
-    let x = (W - this.font.textW(str, 0) * scale) / 2;
+    let x = (W - this.drawnW(str, scale)) / 2;
     for (const ch of str) {
       const gl = this.font.get(ch);
-      if (!gl) { x += 5 * scale; continue; }
+      if (!gl) { x += this.font.px * 0.5 * scale + scale; continue; }
       const bob = Math.sin(t * 2 + x * 0.08) * scale;
       c.drawImage(gl.cv, x, y + bob, gl.w * scale, gl.h * scale);
       x += gl.w * scale + scale;
@@ -252,22 +271,26 @@ export class Demo {
     m.drawImage(this.logo.cv, (W - this.logo.w) / 2, H * 0.3 + Math.sin(t * 1.2) * 6);
     c.drawImage(this.plasmaMaskCv, 0, 0);
     this.copper(t);
-    this.scroller(t, 2, H - 20);
+    this.scroller(t);
   }
 
   renderGreetz(t: number, greetz: string[]) {
     const c = this.ctx;
     c.fillStyle = '#05050a';
     c.fillRect(0, 0, W, H);
+    // the roll owns the middle band: copper parked at the margins, no scroller
+    c.save();
+    c.beginPath();
+    c.rect(0, 34, W, H - 64);
+    c.clip();
     const lineH = 22;
     const total = greetz.length * lineH;
     const off = (t * 34) % (total + H) - lineH;
-    c.textBaseline = 'top';
     greetz.forEach((n, i) => {
       const y = H - off - i * lineH;
       if (y < -lineH || y > H + lineH) return;
       const scale = n === 'YOU' ? 2.6 : 2;
-      let x = (W - this.font.textW(n, 0) * scale) / 2;
+      let x = (W - this.drawnW(n, scale)) / 2;
       for (const ch of n) {
         const gl = this.font.get(ch);
         if (!gl) { x += 8 * scale * 0.5; continue; }
@@ -276,8 +299,9 @@ export class Demo {
         x += gl.w * scale + 2;
       }
     });
-    this.copper(t);
-    this.scroller(t);
+    c.restore();
+    this.copperBar(6, t * 3);
+    this.copperBar(H - 30, t * 3 + 3);
   }
 
   private lastDraftLen = 0;
@@ -301,25 +325,19 @@ export class Demo {
       const gl = this.font.get(ch);
       if (!gl) { x += 10; i++; continue; }
       const flashing = i === this.flashIdx && t - this.flashStart < 0.28;
-      c.drawImage(gl.cv, x, 96, gl.w * 2, gl.h * 2);
-      if (flashing) {
-        // the new letter glows hot: the same bitmap, modulated
-        const fc = this.hotGlyph(ch, 2);
-        c.globalCompositeOperation = 'lighter';
-        c.globalAlpha = 0.7;
-        c.drawImage(fc, x, 96);
-        c.globalAlpha = 1;
-        c.globalCompositeOperation = 'source-over';
-      }
+      // the new letter lands in the ramp's hot stop, then settles to white
+      if (flashing) c.drawImage(this.hotGlyph(ch, 2), x, 96);
+      else c.drawImage(gl.cv, x, 96, gl.w * 2, gl.h * 2);
       x += gl.w * 2 + 2;
       i++;
     }
     if (Math.floor(t * 2) % 2 === 0) {
-      c.fillStyle = '#e8e8ff';
+      c.fillStyle = this.ramp[6];
       c.fillRect(x, 96 + 18, 14, 3);
     }
-    // a keystroke nudges the copper one raster — the machine reacts too
-    this.copper(t, 8, 178, t - this.flashStart < 0.28 ? 4 : 0);
+    // a keystroke kicks the copper — the machine reacts too
+    const flash = t - this.flashStart < 0.28;
+    this.copper(t, 8, 178, flash ? 6 : 0, flash ? 3 : 0);
   }
 
   // preboot: the demo, paused and dimmed, waiting for the gesture.
@@ -331,8 +349,9 @@ export class Demo {
     c.fillRect(0, 0, W, H);
     if ((t * 1.5) % 1 < 0.75) {
       const msg = touch ? '- TAP TO BOOT -' : '- PRESS ANY KEY TO BOOT -';
-      // biggest scale that still fits the raster with margin
-      const s = Math.max(1, Math.floor((W - 16) / this.font.textW(msg, 1) * 2) / 2);
+      // biggest scale whose real drawn width still fits the raster
+      let s = 2;
+      while (s > 1 && this.drawnW(msg, s) > W - 16) s -= 0.5;
       this.tinyText(msg, H / 2 + 28, 0, s);
     }
   }
@@ -379,10 +398,11 @@ export class Demo {
     const hot = this.solidLogo(this.ramp[6]);
     const x0 = (W - this.logo.w) / 2;
     const draws = [{ d: -0.11, a: 0.25 }, { d: -0.055, a: 0.45 }, { d: 0, a: 1 }];
+    const nLetters = Math.max(...this.colLetter) + 1;
     for (let x = 0; x < this.logo.w; x++) {
       const li = this.colLetter[x];
       if (li < 0) continue;
-      const appear = 0.1 + li * 0.09;
+      const appear = 0.25 + li * 0.1;
       if (u <= appear) continue;
       for (const { d, a } of draws) {
         const y = H * 0.3 + Math.sin((t + d) * 2.6 + x * 0.045) * 9;
@@ -398,7 +418,8 @@ export class Demo {
         c.globalCompositeOperation = 'source-over';
       }
     }
-    this.scroller(t);
+    // the scroller waits for the whole name, then slides in from the right
+    if (u > 0.25 + nLetters * 0.1 + 0.15) this.scroller(t);
   }
 
   renderLoop(t: number, greetz: string[]) {
@@ -438,7 +459,8 @@ export class Demo {
     // the logo bounces dvd-style with trail, clamped to the band between the
     // copper bars; cosine easing so the turns read as motion, not math
     const lw = this.logo.w, lh = this.logo.h;
-    const yTop = 42, yBot = Math.max(yTop + 8, 140 - lh);
+    // the red foot must clear the lower copper — clamp a few px above it
+    const yTop = 42, yBot = Math.max(yTop + 8, 134 - lh);
     const bh = yBot - yTop, bw = W - lw;
     const bounceX = (tt: number) => bw * (0.5 - 0.5 * Math.cos(tt * 80 * Math.PI / bw));
     const bounceY = (tt: number) => yTop + bh * (0.5 - 0.5 * Math.cos(tt * 55 * Math.PI / bh));

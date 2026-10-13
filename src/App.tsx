@@ -10,6 +10,8 @@ import type { Deck } from './lib/audio.ts';
 
 function pathName(): string | null {
   const raw = decodeURIComponent(location.pathname.replace(/^\/+/, '')).trim();
+  // a path that still holds a slash isn't a name — back to the landing
+  if (raw.includes('/')) return null;
   const s = raw.replace(/[^\p{L}\p{N} '\-_.]/gu, '').slice(0, 14).trim();
   return s || null;
 }
@@ -67,11 +69,13 @@ export default function App() {
         if (ph === 'landing') demo.renderBios(t, draftRef.current);
         else if (ph === 'toboot') {
           const u = (now - powerRef.current.started) / 350;
-          demo.renderPreboot(t, navigator.maxTouchPoints > 0);
+          // the typed name stays on the glass until the slit covers it — the
+          // wipe opens straight onto the beam, no second prompt
+          demo.renderBios(t, draftRef.current);
           demo.wipe(u);
           if (u >= 1) {
-            // enter IS the key — the wipe hands straight to the beam
             powerRef.current.started = now;
+            if (!REDUCED) navigator.vibrate?.(18);
             const d = deckRef.current;
             if (d) { void d.ctx.resume(); d.play(); }
             setPhase('poweron');
