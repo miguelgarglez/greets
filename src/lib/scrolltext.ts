@@ -28,7 +28,7 @@ export function makeScrolltext(name: string): string {
   const rng = mulberry32(hashName(name) ^ 0x5eed);
   const parts = [
     `${pick(rng, OPENERS)} ${name.toUpperCase()} +++ `,
-    'PRESS M TO MUTE THE TUNE +++ ',
+    'PRESS M OR TAP TO MUTE THE TUNE +++ ',
     pick(rng, BOASTS) + ' +++ ',
     `GREETINGS ALSO FLY TO ${shuffle(rng, [...CREW]).slice(0, 4).join(' - ')} +++ `,
     `SHARE THIS ONE - GREETS DEV / ${name.toUpperCase()} +++ `,

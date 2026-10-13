@@ -329,8 +329,9 @@ export class Demo {
     return x;
   }
 
-  // bios/landing: static starfield + boot text, name typed live
-  renderBios(t: number, draft: string) {
+  // bios/landing: static starfield + boot text, name typed live.
+  // a path with a slash lands here too, honestly labelled
+  renderBios(t: number, draft: string, badPath = false) {
     const c = this.ctx;
     c.fillStyle = '#05050a';
     c.fillRect(0, 0, W, H);
@@ -338,7 +339,7 @@ export class Demo {
     const shown = (draft.toUpperCase() || '').slice(0, 12);
     if (shown.length > this.lastDraftLen) { this.flashStart = t; this.flashIdx = shown.length - 1; }
     this.lastDraftLen = shown.length;
-    this.tinyText('TYPE A NAME', 52, t, 2);
+    this.tinyText(badPath ? 'NOT A NAME' : 'TYPE A NAME', 52, t, 2);
     const x = this.drawDraft(shown, t);
     if (Math.floor(t * 2) % 2 === 0) {
       c.fillStyle = this.ramp[6];
@@ -373,6 +374,7 @@ export class Demo {
 
   // preboot: the demo, paused and dimmed, waiting for the gesture.
   // the words stay on the glass — only the dashes breathe — plus a power key
+  // parked in open starfield, clear of the copper
   renderPreboot(t: number, touch = false, pressed = false) {
     this.renderClassic(0, false);
     const c = this.ctx;
@@ -382,7 +384,7 @@ export class Demo {
     const full = '- ' + core + ' -';
     let s = 2;
     while (s > 1 && this.drawnW(full, s) > W - 16) s -= 0.5;
-    const y = H / 2 + 28;
+    const y = H / 2 - 10;
     this.tinyText(core, y, 0, s);
     if ((t * 1.5) % 1 < 0.75) {
       // the dashes blink, the words hold
@@ -393,7 +395,7 @@ export class Demo {
         c.drawImage(gl.cv, x0 + this.drawnW(full, s) - gl.w * s, y, gl.w * s, gl.h * s);
       }
     }
-    this.powerKey(W / 2, y + 26, pressed);
+    this.powerKey(W / 2, y + 44, pressed);
   }
 
   // crt power-on: the beam collapses in, then the slit opens. coming from the
@@ -424,10 +426,10 @@ export class Demo {
     }
   }
 
-  // prefers-reduced-motion: one frozen frame, honestly labelled
+  // prefers-reduced-motion: one frozen frame, honestly labelled in open pixels
   renderReduced() {
     this.renderClassic(2);
-    this.tinyText('- MOTION OFF -', H * 0.78, 0);
+    this.tinyText('- MOTION OFF -', 120, 0);
   }
 
   // the first beat after boot: the real baked logo lands letter by letter,
@@ -441,25 +443,31 @@ export class Demo {
     this.starfield(t);
     this.copper(t);
     // the typed word dissolves into the demo it becomes — it never teleports
-    if (draft && u < 0.5) this.drawDraft(draft.toUpperCase().slice(0, 12), t, 1 - u * 2);
+    if (draft && u < 0.3) this.drawDraft(draft.toUpperCase().slice(0, 12), t, 1 - u / 0.3);
     const hot = this.solidLogo(this.ramp[6]);
     const x0 = (W - this.logo.w) / 2;
     const draws = [{ d: -0.11, a: 0.25 }, { d: -0.055, a: 0.45 }, { d: 0, a: 1 }];
     const nLetters = Math.max(...this.colLetter) + 1;
+    // chrome letters land on the typed name's own baseline, then the whole
+    // word lifts into its wave — one object, not a replacement
+    const cy0 = draft ? 104 - this.logo.h / 2 : H * 0.3;
+    const k = draft ? Math.min(1, Math.max(0, (u - 0.7) / 0.6)) : 1;
+    const e = k * k * (3 - 2 * k);
+    const cy = cy0 + (H * 0.3 - cy0) * e;
     for (let x = 0; x < this.logo.w; x++) {
       const li = this.colLetter[x];
       if (li < 0) continue;
       const appear = 0.25 + li * 0.1;
       if (u <= appear) continue;
       for (const { d, a } of draws) {
-        const y = H * 0.3 + Math.sin((t + d) * 2.6 + x * 0.045) * 9;
+        const y = cy + Math.sin((t + d) * 2.6 + x * 0.045) * 9;
         c.globalAlpha = a;
         c.drawImage(this.logo.cv, x, 0, 1, this.logo.h, x0 + x, y, 1, this.logo.h);
       }
       c.globalAlpha = 1;
       if (u - appear < 0.22) {
         // hot additive glow over the landing columns — chrome, brighter
-        const y = H * 0.3 + Math.sin(t * 2.6 + x * 0.045) * 9;
+        const y = cy + Math.sin(t * 2.6 + x * 0.045) * 9;
         c.globalCompositeOperation = 'lighter';
         c.drawImage(hot, x, 0, 1, this.logo.h, x0 + x, y, 1, this.logo.h);
         c.globalCompositeOperation = 'source-over';

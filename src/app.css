@@ -8,20 +8,6 @@ html, body, #root { height: 100%; }
 body { background: #060608; overflow: hidden; font-family: 'PS2P', monospace; }
 
 .app { height: 100%; position: relative; display: flex; align-items: center; justify-content: center; }
-.vbar {
-  position: absolute; height: 26px;
-  /* clipped to the tube's own width — the copper never escapes the object */
-  left: 50%; width: min(96vw, 140vh); transform: translateX(-50%);
-  background: var(--vbar, repeating-linear-gradient(to bottom, #3c1404 0 8.3%, #782a06 8.3% 16.6%, #b8480a 16.6% 25%, #e86a10 25% 33.3%, #ffa030 33.3% 41.6%, #ffd880 41.6% 50%, #ffffff 50% 58.3%, #ffd880 58.3% 66.6%, #ffa030 66.6% 75%, #e86a10 75% 83.3%, #b8480a 83.3% 91.6%, #782a06 91.6% 100%));
-  box-shadow: 0 0 12px var(--vbar-glow, rgba(230, 90, 30, 0.2));
-  display: none;
-}
-/* the phone tube is 96vw wide, so its height is 60vw. the top bar overlaps
-   the glass ~13px so its stack meets the raster's own copper; the bottom
-   bar hugs the edge, the scroller fills the band inside */
-.vbar { z-index: 2; }
-.vbar.top { top: calc(50% - 30vw - 13px); }
-.vbar.bottom { top: calc(50% + 30vw); }
 .room {
   position: absolute; inset: 0;
   background: radial-gradient(140% 100% at 50% 0%, #10101a 0%, #060608 55%, #030304 100%);
@@ -61,8 +47,4 @@ body { background: #060608; overflow: hidden; font-family: 'PS2P', monospace; }
 @keyframes flick {
   0%, 91.9%, 93.1%, 100% { opacity: 0; }
   92%, 93% { opacity: 0.025; }
-}
-
-@media (max-width: 700px) {
-  .vbar { display: block; }
 }

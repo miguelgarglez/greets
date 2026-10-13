@@ -7,6 +7,7 @@ import { makeScrolltext, makeGreetz } from './lib/scrolltext.ts';
 import { generateTune } from './lib/tune.ts';
 import { bootAudio } from './lib/audio.ts';
 import type { Deck } from './lib/audio.ts';
+import { WebHaptics } from 'web-haptics';
 
 function pathName(): string | null {
   const raw = decodeURIComponent(location.pathname.replace(/^\/+/, '')).trim();
@@ -15,22 +16,10 @@ function pathName(): string | null {
   const s = raw.replace(/[^\p{L}\p{N} '\-_.]/gu, '').slice(0, 14).trim();
   return s || null;
 }
+const BAD_PATH = decodeURIComponent(location.pathname.replace(/^\/+/, '')).includes('/');
 
 type Phase = 'landing' | 'toboot' | 'preboot' | 'poweron' | 'running';
 const REDUCED = typeof matchMedia !== 'undefined' && matchMedia('(prefers-reduced-motion: reduce)').matches;
-
-// the seeded copper ramp, also worn by the void bars outside the tube
-function rampFor(name: string): RampName {
-  return pick(mulberry32(hashName(name) ^ 0xface), Object.keys(RAMPS)) as RampName;
-}
-// hard copper stripes, matching the raster's copperBar bands (dark -> hot -> dark)
-function vbarGradient(ramp: RampName): string {
-  const r = RAMPS[ramp];
-  const sym = [r[2], r[3], r[4], r[6], r[6], r[4], r[3], r[2]];
-  const stops = sym.map((c, i) => `${c} ${(i * 100 / 8).toFixed(1)}% ${((i + 1) * 100 / 8).toFixed(1)}%`);
-  return `linear-gradient(to bottom, ${stops.join(', ')})`;
-}
-
 
 export default function App() {
   const [name, setName] = useState<string | null>(pathName);
@@ -39,6 +28,7 @@ export default function App() {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
   const deckRef = useRef<Deck | null>(null);
+  const hapticsRef = useRef<WebHaptics | null>(null);
   const mutedRef = useRef(false);
   try { mutedRef.current = localStorage.getItem('greets-muted') === '1'; } catch { /* private mode */ }
   const phaseRef = useRef(phase);
@@ -47,6 +37,12 @@ export default function App() {
   // the demo engine lives outside react; draft flows in via ref
   const draftRef = useRef(draft);
   draftRef.current = draft;
+  // the boot thud — web-haptics covers iOS via audio ticks; muted kills it too
+  const thud = () => {
+    if (REDUCED || mutedRef.current) return;
+    hapticsRef.current ??= new WebHaptics();
+    void hapticsRef.current.trigger(18);
+  };
   const powerRef = useRef({ started: 0, done: 0, fromLanding: false, pressAt: 0 });
 
   useEffect(() => {
@@ -68,7 +64,7 @@ export default function App() {
         const t = (now - t0) / 1000;
         const ph = phaseRef.current;
         if (REDUCED && ph === 'running') { demo.renderReduced(); return; }
-        if (ph === 'landing') demo.renderBios(t, draftRef.current);
+        if (ph === 'landing') demo.renderBios(t, draftRef.current, BAD_PATH);
         else if (ph === 'toboot') {
           const u = (now - powerRef.current.started) / 350;
           // the typed name stays on the glass until the slit covers it — the
@@ -78,7 +74,7 @@ export default function App() {
           if (u >= 1) {
             powerRef.current.started = now;
             powerRef.current.fromLanding = true;
-            if (!REDUCED) navigator.vibrate?.(18);
+            thud();
             const d = deckRef.current;
             if (d) { void d.ctx.resume(); d.play(); }
             setPhase('poweron');
@@ -113,7 +109,7 @@ export default function App() {
         powerRef.current.started = performance.now();
         powerRef.current.fromLanding = false;
         setPhase('poweron');
-        if (!REDUCED) navigator.vibrate?.(18);
+        thud();
         const d = deckRef.current;
         if (d) { void d.ctx.resume(); d.play(); }
       }
@@ -148,12 +144,6 @@ export default function App() {
     return () => { removeEventListener('keydown', onKey); removeEventListener('pointerdown', onTap); };
   }, []);
 
-  useEffect(() => {
-    const ramp = rampFor(name ?? 'STRANGER');
-    document.documentElement.style.setProperty('--vbar', vbarGradient(ramp));
-    document.documentElement.style.setProperty('--vbar-glow', RAMPS[ramp][4] + '55');
-  }, [name]);
-
   const submit = () => {
     const s = draft.trim();
     if (!s) return;
@@ -166,8 +156,6 @@ export default function App() {
   return (
     <div className="app">
       <div className="room" />
-      <div className="vbar top" />
-      <div className="vbar bottom" />
       <div className="tube">
         <canvas ref={canvasRef} className="demoscreen" aria-label={`cracktro greeting ${name ?? ''}`} />
         <div className="crt" aria-hidden>
