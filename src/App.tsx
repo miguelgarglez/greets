@@ -62,7 +62,7 @@ export default function App() {
         const ph = phaseRef.current;
         if (REDUCED && ph === 'running') { demo.renderClassic(2); return; }
         if (ph === 'landing') demo.renderBios(t, draftRef.current);
-        else if (ph === 'preboot') demo.renderPreboot(t);
+        else if (ph === 'preboot') demo.renderPreboot(t, navigator.maxTouchPoints > 0);
         else if (ph === 'poweron') {
           const u = (now - powerRef.current.started) / 600;
           if (u >= 1) { setPhase('running'); }

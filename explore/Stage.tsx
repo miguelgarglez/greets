@@ -19,6 +19,10 @@ export function Stage({ name, section, t0 = 4 }: { name: string; section: Sectio
       const seed = hashName(name);
       const rng = mulberry32(seed ^ 0xface);
       const ramp = pick(rng, Object.keys(RAMPS)) as RampName;
+      // the void bars wear the same ramp the demo drew
+      const r = RAMPS[ramp];
+      document.documentElement.style.setProperty('--vbar',
+        `linear-gradient(to bottom, ${r[0]}, ${r[2]}, ${r[4]}, ${r[r.length - 2]}, ${r[4]}, ${r[2]}, ${r[0]})`);
       const demo = new Demo(ref.current, { font, name, seed, ramp, scrolltext: makeScrolltext(name) });
       const t00 = performance.now();
       const frame = (now: number) => {

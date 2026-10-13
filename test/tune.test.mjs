@@ -5,8 +5,6 @@ import { hashName } from '../src/lib/prng.ts';
 import { writeFileSync } from 'node:fs';
 import assert from 'node:assert';
 
-const MIN_PENT = [0, 3, 5, 7, 10];
-
 function wav(samples, rate = 44100) {
   const n = samples.length, b = Buffer.alloc(44 + n * 2);
   b.write('RIFF'); b.writeUInt32LE(36 + n * 2, 4); b.write('WAVEfmt ', 8);

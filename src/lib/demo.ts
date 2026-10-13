@@ -268,13 +268,13 @@ export class Demo {
   }
 
   // preboot: the demo, paused and dimmed, waiting for the gesture
-  renderPreboot(t: number) {
+  renderPreboot(t: number, touch = false) {
     this.renderClassic(0);
     const c = this.ctx;
     c.fillStyle = 'rgba(4,4,10,0.62)';
     c.fillRect(0, 0, W, H);
     if (Math.floor(t * 1.6) % 2 === 0) {
-      this.tinyText('- PRESS ANY KEY TO BOOT -', H / 2 + 30, 0);
+      this.tinyText(touch ? '- TAP TO BOOT -' : '- PRESS ANY KEY TO BOOT -', H / 2 + 30, 0);
     }
     this.tinyText('GREETS BIOS READY', 26, t);
   }
