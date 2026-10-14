@@ -135,16 +135,18 @@ export const capBytes = (s: string, max = 200): string => {
 export const cleanText = (s: string, max = 240) =>
   capBytes(s.replace(SAFE, ' ').replace(/\s+/g, ' ').slice(0, max));
 export const cleanGreet = (s: string) =>
-  capBytes(s.replace(SAFE, '').replace(/,/g, '').trim().slice(0, 16), 64);
+  // slice by code point, never code unit — a supplementary letter must not
+  // leave a lone surrogate the second pass would strip (non-idempotent)
+  capBytes([...s.replace(SAFE, '').replace(/,/g, '').trim()].slice(0, 16).join(''), 64);
 // the joined greetz string travels behind a one-byte length prefix, capped
 // at 200 bytes — cap the LIST, never the joined string, so no name is ever
 // cut in half and the field, the roll, and the hash carry the same names
 export const cleanGreetzList = (list: string[], maxTotal = 200): string[] => {
   const out: string[] = [];
   let used = 0;
-  for (const raw of list.slice(0, 8)) {
-    const g = cleanGreet(raw);
-    if (!g) continue;
+  // blanks drop before the eight-name cap — a doubled comma must not eat
+  // a real slot
+  for (const g of list.map(cleanGreet).filter(Boolean).slice(0, 8)) {
     const bytes = enc8.encode(g).length + (out.length ? 1 : 0);
     if (used + bytes > maxTotal) break;
     out.push(g);

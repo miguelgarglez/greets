@@ -1,7 +1,7 @@
 // link codec — the whole spec packs into the hash: /<name>#g2.<base64url>
 // a default cracktro needs no hash at all, so casual links stay short.
-// byte0 = version, bytes 1-2 = presence bitmap, then 3 bytes of packed
-// enums, then each present string as [u8 len][utf8].
+// byte0 = version, bytes 1-2 = presence bitmap, then 4 bytes of packed
+// enums (22 bits used), then each present string as [u8 len][utf8].
 import { RAMPS } from './demo.ts';
 import type { RampName } from './demo.ts';
 import { SECTION_ORDER, FONT_ORDER, LOGO_ORDER, WAVE_ORDER, TUNE_ORDER, defaultSpec, cleanText, cleanGreetzList } from './spec.ts';
@@ -36,7 +36,7 @@ export function encodeSpec(s: Spec): string {
 
   const out: number[] = [VERSION, bits & 0xff, bits >> 8];
   if (bits & 0x7f) {
-    // 18 bits of enums, LSB first
+    // 22 bits of enums, LSB first — four bytes on the wire
     let v = 0, n = 0;
     const put = (x: number, w: number) => { v |= (x & ((1 << w) - 1)) << n; n += w; };
     put(s.ramp === 'auto' ? 0 : RAMP_ORDER.indexOf(s.ramp) + 1, 4);

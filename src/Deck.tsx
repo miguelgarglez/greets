@@ -52,7 +52,8 @@ function Chip(props: {
           {props.swatch.map((c, i) => <i key={i} style={{ background: c }} />)}
         </span>
       )}
-      {props.label}
+      {/* key on the word itself: a relabel is a swap the eye can catch */}
+      <span className="klabel" key={props.label}>{props.label}</span>
     </button>
   );
 }
@@ -104,6 +105,10 @@ export default function Deck(props: {
   // draft from spec when the field isn't the thing typing it
   const [greetzDraft, setGreetzDraft] = useState(spec.greetz.join(', '));
   const [greetzFocus, setGreetzFocus] = useState(false);
+  // SAVE relabels once the download has actually been handed over — the
+  // receipt row is where a finished artifact answers
+  const [saved, setSaved] = useState(false);
+  useEffect(() => setSaved(false), [exp.result]);
   useEffect(() => { if (!greetzFocus) setGreetzDraft(spec.greetz.join(', ')); }, [spec.greetz, greetzFocus]);
 
   // the tube shows the thing you're turning: words and motion pin the
@@ -123,7 +128,9 @@ export default function Deck(props: {
     const next = has ? secs.filter((s) => s !== id) : [...secs, id];
     // stored canonical — the lit rig key and the played cycle always agree
     props.onPatch({ sections: SECTION_ORDER.filter((x) => next.includes(x)) });
-    props.onPreview(id);
+    // pin what you just switched on; when one goes dark, fall back to the
+    // scroller rather than stare at the part you removed
+    props.onPreview(has ? 'scroll' : id);
   };
   const sameSecs = (a: SectionId[], b: unknown) =>
     Array.isArray(b) && a.length === b.length && a.every((x) => b.includes(x));
@@ -140,11 +147,19 @@ export default function Deck(props: {
     <div className="deck" role="dialog" aria-label="control deck" style={{ '--hot': hot } as CSSProperties}>
       <div className="deckhead">
         <span className="decktitle">CONTROL DECK</span>
-        <div className="dtabs" role="tablist" aria-label="deck groups">
+        {/* a group of latched keys, not tablist chrome — screen readers get
+            the truth: four toggles, one lit */}
+        <div className="dtabs" role="group" aria-label="deck groups">
           {TABS.map((t) => (
-            <button key={t.id} type="button" role="tab" aria-selected={tab === t.id}
+            <button key={t.id} type="button" aria-pressed={tab === t.id}
               className={'key tab' + (tab === t.id ? ' on' : '')}
-              onClick={() => setTab(t.id)}>
+              onClick={() => {
+                // switching groups unpins the greetz board even if the
+                // field's blur doesn't fire under a synthetic click
+                setGreetzFocus(false);
+                (document.activeElement as HTMLElement | null)?.blur?.();
+                setTab(t.id);
+              }}>
               {t.label}
             </button>
           ))}
@@ -167,6 +182,11 @@ export default function Deck(props: {
               <Chip on={false} hot={hot} label="↩ UNDO" disabled={!props.canUndo} onPress={props.onUndo} />
               <Chip on={false} hot={hot} label="RESET" title="back to the seeded defaults" onPress={props.onReset} />
               <span className="dnote">A RIG IS A WHOLE STYLE IN ONE KEY</span>
+            </Row>
+            <Row label="NOW">
+              <span className="dnote">
+                {`${resolved.ramp.toUpperCase()} · ${resolved.font.toUpperCase()} · LOGO ${resolved.logo.toUpperCase()} · SCROLL ${resolved.speed}× · TUNE ${resolved.tune.toUpperCase()}`}
+              </span>
             </Row>
           </>
         )}
@@ -191,7 +211,7 @@ export default function Deck(props: {
             </Field>
             <Field cap="SCROLLTEXT · EMPTY = AUTO" wide>
               <input
-                className="dinput" aria-label="scrolltext" maxLength={240}
+                className="dinput" aria-label="scrolltext" maxLength={200}
                 placeholder="LEAVE EMPTY FOR THE GENERATED ONE" value={spec.text}
                 onChange={(e) => props.onPatch({ text: cleanText(e.target.value) })}
                 onKeyDown={inputKeys}
@@ -290,7 +310,8 @@ export default function Deck(props: {
               <span className="prog done" aria-live="polite">
                 {`greets-${resolved.name.toLowerCase()}.${exp.result.ext} · ${(exp.result.blob.size / 1048576).toFixed(1)}M`}
               </span>
-              <Chip on={false} hot={hot} label="SAVE" onPress={props.onSave} />
+              <Chip on={saved} hot={hot} label={saved ? 'SAVED ✓' : 'SAVE'}
+                onPress={() => { props.onSave(); setSaved(true); }} />
               <Chip on={false} hot={hot} label="SHARE" onPress={props.onShareFile} />
               <Chip on={false} hot={hot} label="×" title="dismiss" onPress={props.onCancelExport} />
             </>

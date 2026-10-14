@@ -22,6 +22,11 @@ body { background: #060608; overflow: hidden; font-family: 'PS2P', monospace; }
 }
 .demoscreen { width: 100%; height: 100%; display: block; image-rendering: pixelated; background: #05050a; }
 
+.sr-only {
+  position: absolute; width: 1px; height: 1px; overflow: hidden;
+  clip: rect(0 0 0 0); clip-path: inset(50%); white-space: nowrap;
+}
+
 .nameinput {
   position: absolute; inset: 0; width: 100%;
   opacity: 0.001; border: 0; background: transparent;
@@ -97,11 +102,15 @@ body { background: #060608; overflow: hidden; font-family: 'PS2P', monospace; }
 .app.editing .tube {
   flex: none;
   margin-top: max(14px, calc(env(safe-area-inset-top) + 8px));
-  width: min(96vw, calc((100dvh - var(--deckh, 272px) - 56px) * 1.6));
+  /* the tube takes at most ~52dvh of height — the rest is the bay's, so a
+     short window shrinks the glass gracefully instead of crushing it */
+  min-width: 180px;
+  width: min(96vw, calc(52dvh * 1.6));
 }
 
 .fab {
-  position: fixed; right: 18px; top: 18px; z-index: 5;
+  position: fixed; right: 18px; top: max(18px, calc(env(safe-area-inset-top) + 10px)); z-index: 5;
+  min-height: 44px;
   font-family: 'PS2P', monospace; font-size: 10px; letter-spacing: 1px;
   color: var(--hot, #f80); background: linear-gradient(#191922, #0d0d13);
   border: 1px solid #2e2e3a; border-bottom-color: var(--hot, #f80);
@@ -138,26 +147,28 @@ body { background: #060608; overflow: hidden; font-family: 'PS2P', monospace; }
 
 .deckhead {
   display: flex; align-items: center; gap: 12px;
-  padding: 8px 14px;
+  padding: 8px calc(14px + env(safe-area-inset-right)) 8px calc(14px + env(safe-area-inset-left));
   border-bottom: 1px solid #22222e;
 }
 .decktitle { font-size: 10px; color: var(--hot, #f80); letter-spacing: 2px; }
 .dtabs { display: flex; gap: 5px; flex: 1; }
-.tab { font-size: 8px !important; padding: 8px 11px !important; min-height: 36px; }
-.deckx { padding: 8px 12px !important; font-size: 12px !important; min-height: 36px; }
+.tab { font-size: 10px !important; padding: 8px 10px !important; }
+.deckx { padding: 8px 12px !important; font-size: 13px !important; }
 
 .deckbody {
   flex: 1;
   min-height: 0;
   overflow-y: auto;
   padding: 12px 14px 10px;
-  display: flex; flex-direction: column; gap: 10px;
+  display: flex; flex-direction: column; gap: 12px;
+  /* short groups spread across the bay instead of leaving a dead well */
+  justify-content: space-evenly;
   scrollbar-width: thin; scrollbar-color: #2c2c3a transparent;
 }
 
 .deckfoot {
   display: flex; align-items: center; gap: 12px;
-  padding: 10px 14px 13px;
+  padding: 10px calc(14px + env(safe-area-inset-right)) 13px calc(14px + env(safe-area-inset-left));
   border-top: 1px solid #22222e;
   background: linear-gradient(rgba(255,255,255,0.015), transparent);
 }
@@ -168,7 +179,7 @@ body { background: #060608; overflow: hidden; font-family: 'PS2P', monospace; }
   font-size: 10px; color: #9a9ab8; letter-spacing: 1px;
 }
 .dkeys { display: flex; flex-wrap: wrap; gap: 7px; align-items: center; flex: 1; }
-.dnote { font-size: 9px; color: #9a9ab8; align-self: center; user-select: text; }
+.dnote { font-size: 10px; color: #9a9ab8; align-self: center; user-select: text; }
 
 .dfields { display: grid; grid-template-columns: 1fr 1fr; gap: 6px 20px; flex: 1; }
 .field { display: flex; flex-direction: column; gap: 1px; min-width: 0; }
@@ -177,7 +188,8 @@ body { background: #060608; overflow: hidden; font-family: 'PS2P', monospace; }
 .resthumb { height: 36px; border: 1px solid #2c2c3a; border-radius: 3px; image-rendering: pixelated; }
 
 .key {
-  font-family: 'PS2P', monospace; font-size: 8px; letter-spacing: 0.5px;
+  font-family: 'PS2P', monospace; font-size: 10px; letter-spacing: 0.5px;
+  min-height: 44px;
   color: #b8b8c8;
   background: linear-gradient(#1c1c26, #101017);
   border: 1px solid #2e2e3c; border-radius: 4px;
@@ -213,30 +225,50 @@ body { background: #060608; overflow: hidden; font-family: 'PS2P', monospace; }
 .dinput::placeholder { color: #5d5d78; }
 .dinput:focus { border-bottom-color: var(--hot, #f80); outline: none; }
 
-.prog { font-size: 9px; color: var(--hot, #f80); align-self: center; letter-spacing: 1px; white-space: pre; }
+.prog { font-size: 10px; color: var(--hot, #f80); align-self: center; letter-spacing: 1px; white-space: pre; }
+
+/* a key that answers — when a chip relabels itself the new word slides in
+   instead of teleporting */
+@keyframes kswap { from { transform: translateY(5px); opacity: 0; } }
+.klabel { display: inline-block; animation: kswap 0.14s steps(3) backwards; }
 .prog.err { color: #ff5a50; }
 .prog.done { color: #7ee08a; }
 
 @media (max-width: 720px) {
+  .app.editing { padding-top: env(safe-area-inset-top); }
   .app .tube { transition: none; }
-  .app.editing .tube { margin-top: max(10px, env(safe-area-inset-top)); }
-  .deck { width: 100vw; border-radius: 0; margin-top: 8px; }
+  /* the tube floats centred between the top edge and the deck */
+  .app.editing .tube { margin-block: auto; }
+  /* the deck sizes to its active tab — no dead well inside the bay */
+  .deck { width: 100vw; border-radius: 0; margin-top: 8px; flex: 0 1 auto; min-height: 0; }
   .decktitle { display: none; }
-  .dtabs { gap: 4px; }
-  .tab { flex: 1; font-size: 7px !important; padding: 6px 4px !important; }
+  .dtabs { gap: 3px; }
+  .deckhead { padding: 8px 8px; gap: 5px; }
+  .tab { flex: 1; font-size: 10px !important; padding: 6px 1px !important; letter-spacing: 0; }
   /* every key a thumb can reach — the deck is a real instrument, not a menu */
-  .key { min-height: 44px; padding: 10px 12px; font-size: 9px; }
+  .key { min-height: 44px; padding: 10px 12px; font-size: 10px; }
   .tab { min-height: 44px; }
   .deckx { min-width: 44px; min-height: 44px; }
   .dlabel { width: 68px; font-size: 10px; padding-top: 15px; }
   .dfields { grid-template-columns: 1fr; gap: 2px; }
   .dinput { font-size: 10px; padding: 9px 2px 8px; }
-  .fab { right: 12px; top: 12px; }
+  .dkeys .dnote { flex-basis: 100%; }
+  .fab { right: 12px; top: max(12px, calc(env(safe-area-inset-top) + 8px)); }
   .deckfoot { padding-bottom: calc(13px + env(safe-area-inset-bottom)); }
+}
+
+/* short windows (landscape phones): the bay caps itself so the tube keeps
+   a real share of the glass — the body already scrolls internally */
+@media (max-height: 480px) {
+  /* content-sized, pinned to the bottom edge — the leftover air goes to
+     the tube, not a strip under the bay */
+  .deck { max-height: 46dvh; flex: 0 1 auto; margin-top: auto; }
+  .app.editing .tube { min-width: 160px; width: min(96vw, calc(42dvh * 1.6)); }
 }
 
 @media (prefers-reduced-motion: reduce) {
   .deck { animation: none; }
   .app .tube { transition: none; }
   .fab::before { animation: none; }
+  .klabel { animation: none; }
 }

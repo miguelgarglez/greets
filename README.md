@@ -11,9 +11,11 @@ Everything is seeded from the name. Same name, same demo, forever.
 
 ## The control deck
 
-Press `E` (or the `EDIT` key on touch) while a demo runs and the **control deck**
+Press `E` (or the `EDIT` key top-right) while a demo runs and the **control deck**
 docks under the tube — a rack bay of physical keys, not a form. One group at a
-time, and the tube pins itself to whatever you're editing:
+time; while you edit words or motion the tube pins itself to the scroller, the
+greetz board, or the section chip you just touched, so the knob you turn is the
+thing you see:
 
 - **Rigs** — `1994`, `RAGE`, `DEEP` and `ACID` presets, a randomise switch,
   undo, and reset back to the seeded defaults.
@@ -37,8 +39,8 @@ link reproduces the exact cracktro — texts, palette, font, tune and all.
   available, MediaRecorder fallback elsewhere.
 - **⧉ LINK** — the shareable URL with all your settings in it.
 
-Exports render through the same engine you see on screen, so what you
-hear and see is what ships.
+Both exports are a fixed take of the opening section — the part that carries the
+name — rendered through the same engine you see on screen.
 
 ## How it works
 
@@ -56,8 +58,8 @@ hear and see is what ships.
   (all OFL), rasterized to tight bitmaps at boot and re-baked into gradient
   logo strips.
 - **The state** (`src/lib/spec.ts`, `src/lib/link.ts`) — a tiny binary codec packs
-  every deck setting and text into the URL hash; opening the link decodes it
-  straight into the running demo.
+  every deck setting and text into the URL hash; opening the link decodes the spec
+  and waits at the boot key like any other visit.
 - **The exporter** (`src/lib/export.ts`) — offline frame renderer feeding
   `gifenc` for the square loop, and WebCodecs/`mp4-muxer` (or MediaRecorder)
   for the widescreen film with audio.

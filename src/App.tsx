@@ -217,10 +217,12 @@ export default function App() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [audioKey]);
 
+  const [muted, setMuted] = useState(mutedRef.current);
   const toggleMute = () => {
     const d = deckRef.current;
     if (!d) return;
     mutedRef.current = !mutedRef.current;
+    setMuted(mutedRef.current);
     d.gain.gain.value = mutedRef.current ? 0 : 0.8;
     try { localStorage.setItem('greets-muted', mutedRef.current ? '1' : '0'); } catch { /* private mode */ }
     const dm = demoRef.current;
@@ -262,7 +264,9 @@ export default function App() {
         // the power key shows the press for a beat before the beam fires
         powerRef.current.pressAt = performance.now();
         setTimeout(boot, 240);
-      } else if (phaseRef.current === 'running') toggleMute();
+      // a tube tap mutes only while the deck is closed — with the bay open
+      // the tube is a preview, not a switch, and the tap would be invisible
+      } else if (phaseRef.current === 'running' && !deckOpenRef.current) toggleMute();
     };
     addEventListener('keydown', onKey);
     addEventListener('pointerdown', onTap);
@@ -381,30 +385,35 @@ export default function App() {
   };
   const shareLink = async () => {
     const url = location.href;
+    // the clipboard path — also the answer when the share sheet is refused
+    const copy = async () => {
+      try {
+        await navigator.clipboard.writeText(url);
+        setLinkState('copied');
+        setLinkNote('COPIED — THE WHOLE SPEC RIDES IN IT');
+      } catch {
+        setLinkState('manual');
+        setLinkNote(url);
+      }
+      setTimeout(() => {
+        setLinkState('idle');
+        setLinkNote('COPIES THE LINK WITH ALL YOUR SETTINGS');
+      }, 2600);
+    };
     try {
       if (navigator.share) await navigator.share({ url });
-      else {
-        try {
-          await navigator.clipboard.writeText(url);
-          setLinkState('copied');
-          setLinkNote('COPIED — THE WHOLE SPEC RIDES IN IT');
-        } catch {
-          setLinkState('manual');
-          setLinkNote(url);
-        }
-        setTimeout(() => {
-          setLinkState('idle');
-          setLinkNote('COPIES THE LINK WITH ALL YOUR SETTINGS');
-        }, 2600);
-      }
-    } catch { /* sheet dismissed */ }
+      else await copy();
+    } catch {
+      // the sheet was dismissed or refused — the key still answers
+      await copy();
+    }
   };
 
   return (
     <div className={'app' + (deckOpen ? ' editing' : '')}>
       <div className="room" />
       <div className="tube">
-        <canvas ref={canvasRef} className="demoscreen" aria-label={`cracktro greeting ${name ?? ''}`} />
+        <canvas ref={canvasRef} className="demoscreen" aria-label={`cracktro greeting ${name ?? ''}${muted ? ', muted' : ''}`} />
         <div className="crt" aria-hidden>
           <div className="crt-lines" />
           <div className="crt-glow" />
@@ -431,6 +440,9 @@ export default function App() {
           onPointerDown={() => { setRockerDown(true); setTimeout(() => setRockerDown(false), 400); }}
         />
       )}
+      {phase === 'running' && (
+        <span className="sr-only" aria-live="polite">{muted ? 'sound off' : 'sound on'}</span>
+      )}
       {phase === 'running' && !deckOpen && (
         <button type="button" className="fab" style={{ '--hot': RAMPS[resolved.ramp][6] } as CSSProperties}
           aria-label="open the control deck" onClick={() => { setDeckOpen(true); thud(8); }}>
@@ -451,7 +463,15 @@ export default function App() {
           onShareFile={shareFile}
           onShareLink={shareLink}
           onRandomize={() => { pushUndo(); setSpec((s) => randomizeStyle(s, mulberry32(Date.now() & 0xffffffff), Object.keys(RAMPS) as RampName[])); thud(24); }}
-          onReset={() => { pushUndo(); setSpec(defaultSpec(demoName)); }}
+          onReset={() => {
+            // RESET is a rig key like RANDOMISE — it reseeds the style dials
+            // and leaves the words alone, so UNDO can always describe it
+            pushUndo();
+            const d = defaultSpec(demoName);
+            const p: Partial<Spec> = {};
+            for (const k of STYLE_KEYS) (p as Record<string, unknown>)[k] = d[k];
+            setSpec((s) => ({ ...s, ...p }));
+          }}
           onClose={closeDeck}
           linkNote={linkNote}
         />

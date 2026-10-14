@@ -87,6 +87,17 @@ const dims = await mob.evaluate(() => {
 console.log('mobile dims', dims);
 if (dims.keyH < 44 || dims.tabH < 44) throw new Error(`touch target under 44px: ${JSON.stringify(dims)}`);
 if (dims.deckTop <= dims.tubeTop + dims.tubeH - 4) throw new Error(`deck overlaps tube: ${JSON.stringify(dims)}`);
-if (dims.gap > 40) throw new Error(`dead band under tube: ${JSON.stringify(dims)}`);
+// the tube floats centred in the room above a content-sized deck — the gap
+// is composed space, not a dead band, so it should roughly mirror the headroom
+if (Math.abs(dims.gap - dims.tubeTop) > 24) throw new Error(`tube not centred in the room: ${JSON.stringify(dims)}`);
 if (dims.deckBottom < dims.vh - 8) throw new Error(`deck does not reach bottom: ${JSON.stringify(dims)}`);
+// and the bay itself must be content-sized — the last row should sit near
+// the foot, not float above an empty well
+const deckVoid = await mob.evaluate(() => {
+  const body = document.querySelector('.deckbody');
+  const last = body.children[body.children.length - 1];
+  if (!last) return 0;
+  return body.getBoundingClientRect().bottom - last.getBoundingClientRect().bottom;
+});
+if (deckVoid > 48) throw new Error(`dead well inside deck body: ${deckVoid}px under last row`);
 await browser.close();

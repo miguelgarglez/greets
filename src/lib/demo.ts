@@ -211,19 +211,25 @@ export class Demo {
     ];
   }
 
-  private scroller(t: number, scale = 2, yBase = H - 22) {
+  private scroller(t: number, scale = 2, yBase = H - 22, ampScale = 1, text?: string) {
     const c = this.ctx;
     const speed = 55 * this.scrollSpeed;
-    const [amp, sf, tf] = this.wave;
+    const [amp0, sf, tf] = this.wave;
+    const amp = amp0 * ampScale;
+    const gh = 8 * scale;
+    // the wave never dips a glyph under the glass — the baseline rides
+    // higher when the amplitude is wild
+    const yb = Math.min(yBase, H - 2 - amp - gh);
+    const line = text ?? this.scrolltext;
     const adv = this.font.px * scale * 1.0;
-    const total = this.scrolltext.length * adv + W + 40;
+    const total = line.length * adv + W + 40;
     const off = (t * speed) % total;
     let x = W - off;
-    for (let i = 0; i < this.scrolltext.length; i++) {
-      const g = this.font.get(this.scrolltext[i]);
+    for (let i = 0; i < line.length; i++) {
+      const g = this.font.get(line[i]);
       const cw = g ? g.w * scale : adv * 0.6;
       if (x > -adv && x < W + adv && g) {
-        const y = yBase + Math.sin(t * tf + x * sf) * amp;
+        const y = yb + Math.sin(t * tf + x * sf) * amp;
         c.drawImage(g.cv, x, y, g.w * scale, g.h * scale);
       }
       x += cw + 1;
@@ -274,14 +280,14 @@ export class Demo {
     }
   }
 
-  renderClassic(t: number, logo = true, scroll = true) {
+  renderClassic(t: number, logo = true, scroll = true, ampScale = 1) {
     const c = this.ctx;
     c.fillStyle = '#05050a';
     c.fillRect(0, 0, W, H);
     this.starfield(t);
     this.copper(t);
     if (logo) this.waveLogo(t, H * 0.3);
-    if (scroll) this.scroller(t);
+    if (scroll) this.scroller(t, 2, H - 22, ampScale);
   }
 
   private solidCache = new Map<string, HTMLCanvasElement>();
@@ -386,16 +392,21 @@ export class Demo {
     c.rect(0, 36, W, 118);
     c.clip();
     // pack the names into rows inside the band; YOU still gets its size —
-    // shrink a step if a long roll would spill past the copper
-    let scale = 1.6, lineH = 26;
-    {
+    // measure at the scale we will draw and shrink until the last baseline
+    // fits the clip. the field can store more than one scale can show
+    const fits = (s: number, lh: number) => {
       let rows = 1, rx = 18;
       for (const n of greetz) {
-        const w = this.drawnW(n, n === 'YOU' ? 2.2 : scale) + 16;
+        const w = this.drawnW(n, n === 'YOU' ? 2.2 : s) + 16;
         if (rx + w > W - 14) { rows++; rx = 18; }
         rx += w;
       }
-      if (48 + rows * lineH > 150) { scale = 1.1; lineH = 19; }
+      return 48 + rows * lh <= 150;
+    };
+    let scale = 1.6, lineH = 26;
+    for (const [s, lh] of [[1.3, 22], [1.05, 18], [0.85, 15], [0.7, 13]] as const) {
+      if (fits(scale, lineH)) break;
+      scale = s; lineH = lh;
     }
     let x = 18, y = 48;
     for (const n of greetz) {
@@ -453,13 +464,15 @@ export class Demo {
     const shown = (draft.toUpperCase() || '').slice(0, 12);
     if (shown.length > this.lastDraftLen) { this.flashStart = t; this.flashIdx = shown.length - 1; }
     this.lastDraftLen = shown.length;
-    this.tinyText(badPath ? 'NOT A NAME' : 'TYPE A NAME', 52, t, 2);
+    this.tinyText(badPath ? 'NO DISK' : 'TYPE A NAME', 52, t, 2);
     const x = this.drawDraft(shown, t);
     if (Math.floor(t * 2) % 2 === 0) {
       c.fillStyle = this.ramp[6];
       c.fillRect(x, 96 + 18, 14, 3);
     }
     if (shown) this.tinyText('PRESS ENTER', 138, t, 1);
+    // a bad path still gets a working machine — the insert-disk line crawls
+    if (badPath) this.scroller(t * 0.6, 1.5, H - 26, 0.8, 'DISK ERROR +++ INSERT A NAME AND BOOT +++ ');
     // a keystroke kicks the copper — the machine reacts too
     const flash = t - this.flashStart < 0.28;
     this.copper(t, 8, 178, flash ? 6 : 0, flash ? 3 : 0);
@@ -551,11 +564,9 @@ export class Demo {
   // pixels — a complete parked scrolltext line, and the state of the tune.
   // a deck pin wins, so the still shows the thing being edited
   renderReduced(greetz: string[] = []) {
-    if (this.previewMode === 'greetz') { this.renderGreetzBoard(greetz); }
-    else if (this.previewMode === 'plasma') this.renderPlasma(0);
-    else if (this.previewMode === 'copper') this.renderCopper(0);
-    else if (this.previewMode === 'blitter') this.renderBlitter(0);
-    else this.renderClassic(2, true, false);
+    // a deck pin owns the whole still — no captions painted through it
+    if (this.renderPinned(2, greetz)) return;
+    this.renderClassic(2, true, false);
     const line = this.scrolltext.split('+++')[0].trim();
     let s = 2;
     while (s > 1 && this.drawnW(line, s) > W - 16) s -= 0.5;
@@ -627,29 +638,35 @@ export class Demo {
   private renderPinned(t: number, greetz: string[]): boolean {
     const m = this.previewMode;
     if (!m) return false;
-    const lt = t - Math.floor(t / 9) * 9;
+    // absolute clock — a pin must not restart its crawl on the rotator's
+    // 9-second boundary
     if (m === 'greetz') this.renderGreetzBoard(greetz);
-    else if (m === 'scroll' || m === 'classic') this.renderClassic(lt);
-    else if (m === 'plasma') this.renderPlasma(lt);
-    else if (m === 'copper') this.renderCopper(lt);
-    else this.renderBlitter(lt);
+    // the edit pin crawls slow and soft — the tube should read like the
+    // field you're typing in, not pile the sentence on a steep sine
+    else if (m === 'scroll') this.renderClassic(t * 0.45, true, true, 0.55);
+    else if (m === 'classic') this.renderClassic(t);
+    else if (m === 'plasma') this.renderPlasma(t);
+    else if (m === 'copper') this.renderCopper(t);
+    else this.renderBlitter(t);
     return true;
   }
 
   renderLoop(t: number, greetz: string[]) {
-    if (this.renderPinned(t, greetz)) return;
-    const i = Math.floor(t / 9) % (this.sections.length + 1);
-    const lt = t - Math.floor(t / 9) * 9;
-    if (i === this.sections.length) this.renderGreetz(lt, greetz);
-    else {
-      const s = this.sections[i];
-      if (s === 'classic') this.renderClassic(lt);
-      else if (s === 'plasma') this.renderPlasma(lt);
-      else if (s === 'copper') this.renderCopper(lt);
-      else this.renderBlitter(lt);
+    if (!this.renderPinned(t, greetz)) {
+      const i = Math.floor(t / 9) % (this.sections.length + 1);
+      const lt = t - Math.floor(t / 9) * 9;
+      if (i === this.sections.length) this.renderGreetz(lt, greetz);
+      else {
+        const s = this.sections[i];
+        if (s === 'classic') this.renderClassic(lt);
+        else if (s === 'plasma') this.renderPlasma(lt);
+        else if (s === 'copper') this.renderCopper(lt);
+        else this.renderBlitter(lt);
+      }
+      // sections never teleport: a copper-clock wipe reveals the new frame
+      this.wipe(lt / 0.45);
     }
-    // sections never teleport: a copper-clock wipe reveals the new frame
-    this.wipe(lt / 0.45);
+    // the mute badge sits above any pin — silence must be visible
     if (this.muted) this.tinyText('SND OFF', 3, 0, 1);
   }
 
