@@ -49,7 +49,7 @@ export default function App() {
     hapticsRef.current ??= new WebHaptics();
     void hapticsRef.current.trigger(18);
   };
-  const powerRef = useRef({ started: 0, done: 0, fromLanding: false, pressAt: 0 });
+  const powerRef = useRef({ started: 0, done: 0, pressAt: 0 });
 
   useEffect(() => {
     let stop = false;
@@ -75,7 +75,6 @@ export default function App() {
           demo.wipe(u);
           if (u >= 1) {
             powerRef.current.started = now;
-            powerRef.current.fromLanding = true;
             thud();
             const d = deckRef.current;
             if (d) { void d.ctx.resume(); d.play(); }
@@ -86,12 +85,12 @@ export default function App() {
         else if (ph === 'poweron') {
           const u = (now - powerRef.current.started) / 600;
           if (u >= 1) { powerRef.current.done = now; setPhase('running'); }
-          else demo.renderPowerOn(u, powerRef.current.fromLanding ? draftRef.current : null, t);
+          else demo.renderPowerOn(u, name, t);
         }
         else {
           const sinceBoot = (now - powerRef.current.done) / 1000;
           const lt = t - Math.floor(t / 9) * 9;
-          if (sinceBoot < 1.4) demo.renderIntro(sinceBoot, lt, powerRef.current.fromLanding ? draftRef.current : null);
+          if (sinceBoot < 1.4) demo.renderIntro(sinceBoot, lt, name);
           else { demo.muted = mutedRef.current; demo.renderLoop(t, greetz); }
         }
         if (!(REDUCED && ph === 'running')) raf = requestAnimationFrame(frame);
@@ -109,7 +108,6 @@ export default function App() {
     const boot = () => {
       if (phaseRef.current === 'preboot') {
         powerRef.current.started = performance.now();
-        powerRef.current.fromLanding = false;
         setPhase('poweron');
         thud();
         const d = deckRef.current;

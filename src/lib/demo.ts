@@ -267,7 +267,7 @@ export class Demo {
     }
     const m = this.plasmaMaskCv.getContext('2d')!;
     m.globalCompositeOperation = 'source-over';
-    m.fillStyle = 'rgba(3,3,8,0.62)';
+    m.fillStyle = 'rgba(46,46,64,0.6)';
     m.fillRect(0, 0, W, H);
     m.globalCompositeOperation = 'destination-out';
     m.drawImage(this.logo.cv, (W - this.logo.w) / 2, H * 0.3 + Math.sin(t * 1.2) * 6);
@@ -402,7 +402,9 @@ export class Demo {
         c.drawImage(gl.cv, x0 + this.drawnW(full, s) - gl.w * s, y, gl.w * s, gl.h * s);
       }
     }
-    this.powerKey(W / 2, y + 44, pressed);
+    // on touch the DOM rocker under the tube is the control — the glass
+    // keeps its standby mark only where it is the control
+    if (!touch) this.powerKey(W / 2, y + 44, pressed);
   }
 
   // crt power-on: the beam collapses in, then the slit opens. coming from the
