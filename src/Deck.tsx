@@ -4,7 +4,7 @@ import { useEffect, useState } from 'react';
 import type { CSSProperties } from 'react';
 import { RAMPS } from './lib/demo.ts';
 import type { RampName } from './lib/demo.ts';
-import { SECTION_ORDER, FONT_ORDER, LOGO_ORDER, WAVE_ORDER, SPEEDS, cleanText, cleanGreet } from './lib/spec.ts';
+import { SECTION_ORDER, FONT_ORDER, LOGO_ORDER, WAVE_ORDER, SPEEDS, PRESETS, cleanText, cleanGreet } from './lib/spec.ts';
 import type { Spec, SectionId, Resolved } from './lib/spec.ts';
 import type { Exported } from './lib/export.ts';
 
@@ -201,7 +201,11 @@ export default function Deck(props: {
           {exp.error && <span className="prog err">{exp.error}</span>}
         </Row>
 
-        <Row label="LUCK">
+        <Row label="RIGS">
+          {PRESETS.map((pr) => (
+            <Chip key={pr.id} on={false} hot={hot} label={pr.label}
+              onPress={() => props.onPatch(pr.patch)} />
+          ))}
           <Chip on={false} hot={hot} label="⚄ RANDOMISE" onPress={props.onRandomize} />
           <Chip on={false} hot={hot} label="RESET" title="back to the seeded defaults" onPress={props.onReset} />
         </Row>

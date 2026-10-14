@@ -1,0 +1,17 @@
+import { chromium } from 'playwright';
+const out = process.env.OUT;
+const b = await chromium.launch();
+const p = await b.newPage({ viewport: { width: 390, height: 844 }, hasTouch: true });
+p.on('pageerror', (e) => console.log('PAGEERR', e.message));
+await p.goto('http://localhost:5387/miguel');
+await p.waitForTimeout(1000);
+await p.tap('canvas');
+await p.waitForTimeout(2600);
+await p.click('.fab');
+await p.waitForTimeout(700);
+await p.screenshot({ path: out + '/mob-deck.png' });
+await p.click('button.key:has-text("RAGE")');
+await p.waitForTimeout(600);
+await p.screenshot({ path: out + '/mob-rage.png' });
+await b.close();
+console.log('DONE');

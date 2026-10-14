@@ -170,7 +170,12 @@ export default function App() {
       const font = await getFont(resolved.font);
       if (tok !== configTok.current) return;
       fontNowRef.current = font;
-      demoRef.current?.configure(assetsFor(font));
+      const d = demoRef.current;
+      if (d) {
+        d.configure(assetsFor(font));
+        // reduced-motion mode renders on demand, not on a raf loop
+        if (REDUCED && phaseRef.current === 'running') { d.muted = mutedRef.current; d.renderReduced(); }
+      }
     })();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [resolved]);
@@ -197,6 +202,8 @@ export default function App() {
     mutedRef.current = !mutedRef.current;
     d.gain.gain.value = mutedRef.current ? 0 : 0.8;
     try { localStorage.setItem('greets-muted', mutedRef.current ? '1' : '0'); } catch { /* private mode */ }
+    const dm = demoRef.current;
+    if (REDUCED && dm) { dm.muted = mutedRef.current; dm.renderReduced(); }
   };
 
   useEffect(() => {

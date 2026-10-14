@@ -29,7 +29,7 @@ export function makeScrolltext(name: string, touch = false, credits = 'GREETS DE
   const parts = [
     `${pick(rng, OPENERS)} ${name.toUpperCase()} +++ `,
     touch ? 'TAP TO MUTE THE TUNE +++ ' : 'PRESS M OR TAP TO MUTE THE TUNE +++ ',
-    'E OPENS THE CONTROL DECK - MAKE IT YOURS +++ ',
+    touch ? 'THE EDIT KEY MAKES THIS ONE YOURS +++ ' : 'E OPENS THE CONTROL DECK - MAKE IT YOURS +++ ',
     pick(rng, BOASTS) + ' +++ ',
     `GREETINGS ALSO FLY TO ${shuffle(rng, [...CREW]).slice(0, 4).join(' - ')} +++ `,
     `SHARE THIS ONE - ${credits} / ${name.toUpperCase()} +++ `,

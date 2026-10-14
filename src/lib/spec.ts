@@ -107,6 +107,15 @@ export function randomizeStyle(s: Spec, rng: () => number, ramps: RampName[]): S
   };
 }
 
+// named rigs — one press dresses the whole machine; everything still editable
+export interface Preset { id: string; label: string; patch: Partial<Spec> }
+export const PRESETS: Preset[] = [
+  { id: '94', label: '1994', patch: { font: 'ps2p', logo: 'wave', wave: 'classic', speed: 1, sections: 'auto', ramp: 'auto' } },
+  { id: 'rage', label: 'RAGE', patch: { ramp: 'alert', sections: ['blitter', 'copper'], font: 'ps2p', logo: 'bounce', wave: 'wild', speed: 3 } },
+  { id: 'deep', label: 'DEEP', patch: { ramp: 'ice', sections: ['plasma'], font: 'vt', logo: 'still', wave: 'calm', speed: 0 } },
+  { id: 'acid', label: 'ACID', patch: { ramp: 'jungle', sections: ['copper', 'classic'], font: 'silk', logo: 'bounce', wave: 'wild', speed: 2 } },
+];
+
 // sanitizers — the raster font covers a cracktro-era charset, anything else
 // becomes a gap rather than a tofu box
 const SAFE = /[^\p{L}\p{N} .,!'"\-+*/&?()·:=;<>]/gu;
