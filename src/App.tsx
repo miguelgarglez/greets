@@ -15,7 +15,7 @@ import { bootAudio } from './lib/audio.ts';
 import type { Deck } from './lib/audio.ts';
 import { exportGif, exportVideo } from './lib/export.ts';
 import ControlDeck from './Deck.tsx';
-import type { ExportUi } from './Deck.tsx';
+import type { ExportUi, Preview } from './Deck.tsx';
 import { WebHaptics } from 'web-haptics';
 
 function pathName(): string | null {
@@ -38,8 +38,10 @@ export default function App() {
   const [deckOpen, setDeckOpen] = useState(false);
   const [draft, setDraft] = useState('');
   const [rockerDown, setRockerDown] = useState(false);
-  const [exp, setExp] = useState<ExportUi>({ busy: false, frac: 0, label: '', result: null, error: null });
+  const [exp, setExp] = useState<ExportUi>({ busy: false, kind: null, frac: 0, label: '', result: null, error: null });
   const [linkNote, setLinkNote] = useState('copies the link with all your settings');
+  const [linkState, setLinkState] = useState<'idle' | 'copied' | 'manual'>('idle');
+  const [canUndo, setCanUndo] = useState(false);
   const demoName = name ?? 'STRANGER';
   const seed = hashName(demoName);
   const autoRamp = pick(mulberry32(seed ^ 0xface), Object.keys(RAMPS)) as RampName;
@@ -97,10 +99,19 @@ export default function App() {
     if (location.pathname + location.hash !== url) history.replaceState(null, '', url);
   }, [spec, name]);
 
+  const nameRef = useRef(name);
+  nameRef.current = name;
   useEffect(() => {
     const onNav = () => {
-      setName(pathName());
-      setSpec(decodeSpec(location.hash, pathName() ?? ''));
+      const n = pathName();
+      setSpec(decodeSpec(location.hash, n ?? ''));
+      if (n !== nameRef.current) {
+        // the route owns the phase: back to '/' means landing, a different
+        // name means a fresh tube that still has to be powered on
+        setDeckOpen(false);
+        setPhase(n ? 'preboot' : 'landing');
+      }
+      setName(n);
     };
     addEventListener('hashchange', onNav);
     addEventListener('popstate', onNav);
@@ -117,7 +128,6 @@ export default function App() {
       fontNowRef.current = font;
       const demo = new Demo(canvasRef.current, assetsFor(font));
       demoRef.current = demo;
-      const tune = resolved.tune === 'off' ? null : generateTune(resolved.tuneSeed);
       const t0 = performance.now();
       const frame = (now: number) => {
         if (stop) return;
@@ -149,21 +159,14 @@ export default function App() {
           const sinceBoot = (now - powerRef.current.done) / 1000;
           const lt = t - Math.floor(t / 9) * 9;
           if (sinceBoot < 1.4) demo.renderIntro(sinceBoot, lt, name);
-          else { demo.muted = mutedRef.current; demo.renderLoop(t, greetzRef.current); }
+          else { demo.muted = mutedRef.current; demo.previewMode = previewRef.current; demo.renderLoop(t, greetzRef.current); }
         }
         if (!(REDUCED && ph === 'running')) raf = requestAnimationFrame(frame);
       };
       raf = requestAnimationFrame(frame);
-      // prebuild audio so the gesture plays instantly
-      deckRef.current = tune ? bootAudio(tune) : null;
-      if (deckRef.current) deckRef.current.gain.gain.value = mutedRef.current ? 0 : 0.8;
     })();
     return () => {
       stop = true; alive = false; cancelAnimationFrame(raf); demoRef.current = null;
-      const d = deckRef.current;
-      deckRef.current = null;
-      d?.stop();
-      if (d && d.ctx.state !== 'closed') d.ctx.close();
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [name]);
@@ -186,22 +189,26 @@ export default function App() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [resolved]);
 
-  // the tune dial re-cuts the song under the needle
-  const tuneSeedRef = useRef(resolved.tuneSeed);
+  // one owner for the audio: a whole deck per (name, tune). OFF and A share
+  // a seed but not a deck, so the key carries the choice, not just the seed.
+  // a deck created while the demo is already running starts playing on its
+  // own — the gesture that powered the tube also unlocks later contexts
+  const audioKey = name ? `${name}|${resolved.tune}|${resolved.tuneSeed}` : '';
   useEffect(() => {
-    if (tuneSeedRef.current === resolved.tuneSeed) return;
-    tuneSeedRef.current = resolved.tuneSeed;
-    const wasPlaying = phaseRef.current === 'running' || phaseRef.current === 'poweron';
-    const old = deckRef.current;
-    old?.stop();
-    if (old && old.ctx.state !== 'closed') old.ctx.close();
-    deckRef.current = resolved.tune === 'off' ? null : bootAudio(generateTune(resolved.tuneSeed));
-    if (deckRef.current) {
-      deckRef.current.gain.gain.value = mutedRef.current ? 0 : 0.8;
-      if (wasPlaying) { void deckRef.current.ctx.resume(); deckRef.current.play(); }
+    if (!audioKey) return;
+    const deck = resolved.tune === 'off' ? null : bootAudio(generateTune(resolved.tuneSeed));
+    deckRef.current = deck;
+    if (deck) {
+      deck.gain.gain.value = mutedRef.current ? 0 : 0.8;
+      if (phaseRef.current === 'running' || phaseRef.current === 'poweron') { void deck.ctx.resume(); deck.play(); }
     }
+    return () => {
+      if (deckRef.current === deck) deckRef.current = null;
+      deck?.stop();
+      if (deck && deck.ctx.state !== 'closed') void deck.ctx.close();
+    };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [resolved.tuneSeed]);
+  }, [audioKey]);
 
   const toggleMute = () => {
     const d = deckRef.current;
@@ -211,6 +218,14 @@ export default function App() {
     try { localStorage.setItem('greets-muted', mutedRef.current ? '1' : '0'); } catch { /* private mode */ }
     const dm = demoRef.current;
     if (REDUCED && dm) { dm.muted = mutedRef.current; dm.renderReduced(); }
+  };
+
+  const deckOpenRef = useRef(deckOpen);
+  deckOpenRef.current = deckOpen;
+  // closing hands focus back to the EDIT key so the toggle is one control
+  const closeDeck = () => {
+    setDeckOpen(false);
+    requestAnimationFrame(() => (document.querySelector('.fab') as HTMLElement | null)?.focus());
   };
 
   useEffect(() => {
@@ -224,11 +239,15 @@ export default function App() {
       }
     };
     const onKey = (e: KeyboardEvent) => {
+      // escape is the deck's own release — it must work while a field is focused
+      if (e.key === 'Escape') {
+        if (deckOpenRef.current) { e.preventDefault(); closeDeck(); }
+        return;
+      }
       if ((e.target as HTMLElement | null)?.closest?.('input, textarea, [contenteditable]')) return;
       if (phaseRef.current === 'preboot') { e.preventDefault(); boot(); }
       else if ((e.key === 'm' || e.key === 'M') && phaseRef.current === 'running') toggleMute();
-      else if ((e.key === 'e' || e.key === 'E') && phaseRef.current === 'running') { setDeckOpen((v) => !v); thud(8); }
-      else if (e.key === 'Escape' && phaseRef.current === 'running') setDeckOpen(false);
+      else if ((e.key === 'e' || e.key === 'E') && phaseRef.current === 'running') { if (deckOpenRef.current) closeDeck(); else setDeckOpen(true); thud(8); }
     };
     const onTap = (e: PointerEvent) => {
       if ((e.target as HTMLElement | null)?.closest?.('.deck, .fab')) return;
@@ -253,7 +272,32 @@ export default function App() {
     setPhase('toboot');
   };
 
-  const patch = (p: Partial<Spec>) => { setSpec((s) => ({ ...s, ...p })); thud(8); };
+  // style patches are undoable, word edits are not — undo is a rig key,
+  // not a per-keystroke text history
+  const undoRef = useRef<Spec[]>([]);
+  const patch = (p: Partial<Spec>) => {
+    if (!('text' in p || 'greetz' in p || 'credits' in p || 'name' in p)) {
+      undoRef.current.push(spec);
+      if (undoRef.current.length > 24) undoRef.current.shift();
+      setCanUndo(true);
+    }
+    setSpec((s) => ({ ...s, ...p }));
+    thud(8);
+  };
+  const undo = () => {
+    const prev = undoRef.current.pop();
+    if (!prev) return;
+    if (!undoRef.current.length) setCanUndo(false);
+    setSpec(prev);
+    thud(8);
+  };
+  // the deck pins the tube to the part being edited
+  const previewRef = useRef<Preview>('');
+  const setPreview = (p: Preview) => {
+    previewRef.current = p;
+    const d = demoRef.current;
+    if (d && REDUCED && phaseRef.current === 'running') { d.muted = mutedRef.current; d.renderReduced(); }
+  };
   const rename = (n: string) => {
     history.pushState(null, '', '/' + encodeURIComponent(n.toLowerCase()) + location.hash);
     setSpec((s) => ({ ...s, name: n }));
@@ -262,26 +306,37 @@ export default function App() {
     setName(n);
   };
 
+  // exports are jobs — a cancelled or superseded job never gets to publish
+  const jobRef = useRef(0);
   const doExport = async (kind: 'gif' | 'video') => {
     const font = fontNowRef.current;
     if (!font || exp.busy) return;
+    const job = ++jobRef.current;
     const ac = new AbortController();
     abortRef.current = ac;
-    setExp({ busy: true, frac: 0, label: 'WARMING UP', result: null, error: null });
-    const prog = (frac: number, label: string) => setExp((e) => ({ ...e, frac, label }));
+    setExp({ busy: true, kind, frac: 0, label: 'WARMING UP', result: null, error: null });
+    const live = () => jobRef.current === job;
+    const prog = (frac: number, label: string) => { if (live()) setExp((e) => ({ ...e, frac, label })); };
     try {
       const assets = assetsFor(font);
       const tune = resolved.tune === 'off' ? null : generateTune(resolved.tuneSeed);
       const r = kind === 'gif'
-        ? await exportGif(assets, resolved.greetz, resolved.ramp, prog, ac.signal)
+        ? await exportGif(assets, resolved.greetz, resolved.ramp, resolved.credits, prog, ac.signal)
         : await exportVideo(assets, resolved.greetz, resolved.ramp, tune, prog, ac.signal);
-      setExp({ busy: false, frac: 1, label: 'DONE', result: r, error: null });
+      if (live()) setExp({ busy: false, kind, frac: 1, label: 'DONE', result: r, error: null });
     } catch (e) {
+      if (!live()) return;
       const msg = e instanceof DOMException && e.name === 'AbortError' ? 'CANCELLED'
         : e instanceof Error && /record|encode/i.test(e.message) ? 'THIS BROWSER CANNOT PRINT FILM'
         : 'THE PRESS JAMMED';
-      setExp({ busy: false, frac: 0, label: '', result: null, error: msg });
+      setExp({ busy: false, kind: null, frac: 0, label: '', result: null, error: msg });
     }
+  };
+  const cancelExport = () => {
+    jobRef.current++;
+    abortRef.current?.abort();
+    abortRef.current = null;
+    setExp({ busy: false, kind: null, frac: 0, label: '', result: null, error: null });
   };
   const saveResult = () => {
     if (!exp.result) return;
@@ -304,9 +359,18 @@ export default function App() {
     try {
       if (navigator.share) await navigator.share({ url });
       else {
-        try { await navigator.clipboard.writeText(url); setLinkNote('copied'); }
-        catch { setLinkNote(url); }
-        setTimeout(() => setLinkNote('copies the link with all your settings'), 2400);
+        try {
+          await navigator.clipboard.writeText(url);
+          setLinkState('copied');
+          setLinkNote('copied — the whole spec rides in it');
+        } catch {
+          setLinkState('manual');
+          setLinkNote(url);
+        }
+        setTimeout(() => {
+          setLinkState('idle');
+          setLinkNote('copies the link with all your settings');
+        }, 2600);
       }
     } catch { /* sheet dismissed */ }
   };
@@ -351,16 +415,19 @@ export default function App() {
       {deckOpen && phase === 'running' && (
         <ControlDeck
           spec={spec} resolved={resolved} hot={RAMPS[resolved.ramp][6]} exp={exp}
+          canUndo={canUndo} linkState={linkState}
           onPatch={patch}
+          onUndo={undo}
+          onPreview={setPreview}
           onRename={rename}
           onExport={doExport}
-          onCancelExport={() => { abortRef.current?.abort(); setExp({ busy: false, frac: 0, label: '', result: null, error: null }); }}
+          onCancelExport={cancelExport}
           onSave={saveResult}
           onShareFile={shareFile}
           onShareLink={shareLink}
-          onRandomize={() => { setSpec((s) => randomizeStyle(s, mulberry32(Date.now() & 0xffffffff), Object.keys(RAMPS) as RampName[])); thud(24); }}
-          onReset={() => setSpec(defaultSpec(demoName))}
-          onClose={() => setDeckOpen(false)}
+          onRandomize={() => { undoRef.current.push(spec); setCanUndo(true); setSpec((s) => randomizeStyle(s, mulberry32(Date.now() & 0xffffffff), Object.keys(RAMPS) as RampName[])); thud(24); }}
+          onReset={() => { undoRef.current.push(spec); setCanUndo(true); setSpec(defaultSpec(demoName)); }}
+          onClose={closeDeck}
           linkNote={linkNote}
         />
       )}

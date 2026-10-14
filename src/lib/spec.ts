@@ -76,8 +76,11 @@ export function resolveSpec(s: Spec, seed: number, autoRamp: RampName, mkGreetz:
     name: s.name,
     seed,
     ramp: s.ramp === 'auto' ? autoRamp : s.ramp,
+    // 'auto' must reproduce the order the demo engine has always drawn: its
+    // single seeded rng serves 150 starfield draws (3 calls each) first,
+    // then the section shuffle — same name, same demo, forever
     sections: s.sections === 'auto'
-      ? shuffle(mulberry32(seed ^ 0x51de), ['classic', 'plasma', 'blitter'] as SectionId[])
+      ? (() => { const rng = mulberry32(seed); for (let i = 0; i < 450; i++) rng(); return shuffle(rng, ['classic', 'plasma', 'blitter'] as SectionId[]); })()
       : SECTION_ORDER.filter((x) => (s.sections as SectionId[]).includes(x)),
     font: s.font === 'auto' ? 'ps2p' : s.font,
     speed: SPEEDS[s.speed === 'auto' ? 1 : s.speed],
@@ -119,9 +122,19 @@ export const PRESETS: Preset[] = [
 // sanitizers — the raster font covers a cracktro-era charset, anything else
 // becomes a gap rather than a tofu box
 const SAFE = /[^\p{L}\p{N} .,!'"\-+*/&?()·:=;<>]/gu;
+const enc8 = new TextEncoder(), dec8 = new TextDecoder();
+// hash strings travel behind a one-byte length prefix — cap BYTES, and never
+// split a code point on the cut
+export const capBytes = (s: string, max = 200): string => {
+  const b = enc8.encode(s);
+  if (b.length <= max) return s;
+  let n = max;
+  while (n > 0 && (b[n] & 0xc0) === 0x80) n--;
+  return dec8.decode(b.subarray(0, n));
+};
 export const cleanText = (s: string, max = 240) =>
-  s.replace(SAFE, ' ').replace(/\s+/g, ' ').slice(0, max);
+  capBytes(s.replace(SAFE, ' ').replace(/\s+/g, ' ').slice(0, max));
 export const cleanGreet = (s: string) =>
-  s.replace(SAFE, '').replace(/,/g, '').slice(0, 16);
+  capBytes(s.replace(SAFE, '').replace(/,/g, '').slice(0, 16), 64);
 export const cleanName = (s: string) =>
   s.replace(/[^\p{L}\p{N} '\-_.]/gu, '').slice(0, 14).trim();

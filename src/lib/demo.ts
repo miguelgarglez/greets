@@ -334,7 +334,10 @@ export class Demo {
     m.fillStyle = 'rgba(46,46,64,0.6)';
     m.fillRect(0, 0, W, H);
     m.globalCompositeOperation = 'destination-out';
-    m.drawImage(this.logo.cv, (W - this.logo.w) / 2, H * 0.3 + Math.sin(t * 1.2) * 6);
+    // the window is the logo — it obeys the logo dial: held, drifting, or loose
+    const [mx, my] = this.logoMode === 'bounce' ? this.bouncePos(t)
+      : [(W - this.logo.w) / 2, H * 0.3 + (this.logoMode === 'still' ? 0 : Math.sin(t * 1.2) * 6)];
+    m.drawImage(this.logo.cv, mx, my);
     c.drawImage(this.plasmaMaskCv, 0, 0);
     this.copper(t);
     this.scroller(t);
@@ -569,8 +572,13 @@ export class Demo {
   }
 
   muted = false;
+  // while the deck is open it can pin the tube to the part being edited —
+  // a knob you can't see move isn't a knob. '' means free rotation
+  previewMode: '' | 'scroll' | 'greetz' = '';
 
   renderLoop(t: number, greetz: string[]) {
+    if (this.previewMode === 'greetz') { this.renderGreetz(t, greetz); return; }
+    if (this.previewMode === 'scroll') { this.renderClassic(t); return; }
     const i = Math.floor(t / 9) % (this.sections.length + 1);
     const lt = t - Math.floor(t / 9) * 9;
     if (i === this.sections.length) this.renderGreetz(lt, greetz);
@@ -620,16 +628,25 @@ export class Demo {
     c.fillRect(0, 0, W, H);
     this.starfield(t);
     this.copper(t);
-    // the logo bounces dvd-style with trail, clamped to the band between the
-    // copper bars; cosine easing so the turns read as motion, not math
-    for (const [d, a] of [[-0.09, 0.2], [-0.045, 0.4]] as const) {
-      c.globalAlpha = a;
-      const p = this.bouncePos(t + d);
-      c.drawImage(this.logo.cv, p[0], p[1]);
+    // the blitter's bounce is its identity — but the logo dial still rules:
+    // still parks it mid-band, wave bends the same flight per column
+    if (this.logoMode === 'still') {
+      c.drawImage(this.logo.cv, (W - this.logo.w) / 2, (134 - this.logo.h) / 2 + 10);
+    } else {
+      for (const [d, a] of [[-0.09, 0.2], [-0.045, 0.4], [0, 1]] as const) {
+        c.globalAlpha = a;
+        const p = this.bouncePos(t + d);
+        if (this.logoMode === 'wave') {
+          for (let x = 0; x < this.logo.w; x++) {
+            const y = p[1] + Math.sin((t + d) * 2.6 + x * 0.045) * 7;
+            c.drawImage(this.logo.cv, x, 0, 1, this.logo.h, p[0] + x, y, 1, this.logo.h);
+          }
+        } else {
+          c.drawImage(this.logo.cv, p[0], p[1]);
+        }
+      }
+      c.globalAlpha = 1;
     }
-    c.globalAlpha = 1;
-    const p = this.bouncePos(t);
-    c.drawImage(this.logo.cv, p[0], p[1]);
     this.scroller(t);
   }
 }

@@ -12,26 +12,29 @@ Everything is seeded from the name. Same name, same demo, forever.
 ## The control deck
 
 Press `E` (or the `EDIT` key on touch) while a demo runs and the **control deck**
-slides up — a rack of physical keys, not a form:
+docks under the tube — a rack bay of physical keys, not a form. One group at a
+time, and the tube pins itself to whatever you're editing:
 
+- **Rigs** — `1994`, `RAGE`, `DEEP` and `ACID` presets, a randomise switch,
+  undo, and reset back to the seeded defaults.
 - **Words** — rename the recipient, rewrite the scrolltext, hand-write the
   greetz roll, and sign the credits line.
-- **Style** — eight copper ramps, the section lineup (classic / copper wall /
-  plasma / blitter, plus the always-on greetz roll), logo treatment
-  (wave / still / bounce), three pixel fonts, scroll speed and wave shape,
-  and which of four seeded tunes plays — or none.
-- **Rigs** — `1994`, `RAGE`, `DEEP` and `ACID` presets, a randomise switch,
-  and reset back to the seeded defaults.
+- **Look** — eight copper ramps and three pixel fonts.
+- **Motion** — the section lineup (classic / copper wall / plasma / blitter,
+  plus the always-on greetz roll), logo treatment (wave / still / bounce),
+  scroll speed and wave shape.
+- **Tune** — which of four seeded tunes plays — or none.
 
 Every setting rides in the URL as a compact base64 hash (`#g2.…`), so a copied
 link reproduces the exact cracktro — texts, palette, font, tune and all.
 
 ## Make one yours
 
-- **◉ GIF** — a seamless 600×600 boomerang loop rendered offline through
-  `gifenc`, ready for chat.
-- **▶ FILM** — a 9-second 1280×720 film with the real tune: WebCodecs +
-  `mp4-muxer` where available, MediaRecorder fallback elsewhere.
+- **◉ GIF** — a 600×600 card: the demo on top, a printed label band with the
+  name and credits below, looping seamless through `gifenc`, ready for chat.
+- **▶ FILM** — a 1280×720 film that stays on the recipient's section from
+  first frame to last, with the real tune: WebCodecs + `mp4-muxer` where
+  available, MediaRecorder fallback elsewhere.
 - **⧉ LINK** — the shareable URL with all your settings in it.
 
 Exports render through the same engine you see on screen, so what you
@@ -73,8 +76,8 @@ npm run build
 
 ## Tech notes
 
-- React + TypeScript + Vite. No backend; the only runtime deps are `gifenc`
-  and `mp4-muxer` for exports.
+- React + TypeScript + Vite. No backend. Runtime deps beyond React: `gifenc`
+  and `mp4-muxer` for exports, `web-haptics` for the boot thud.
 - Determinism: `hashName` (FNV-1a) → mulberry32 seeds every choice.
 - No WebGL, no samples, no WebGPU — one canvas and one AudioBuffer.
 - Fonts: [Press Start 2P](https://fonts.google.com/specimen/Press+Start+2P),

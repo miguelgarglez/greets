@@ -4,7 +4,7 @@
 // enums, then each present string as [u8 len][utf8].
 import { RAMPS } from './demo.ts';
 import type { RampName } from './demo.ts';
-import { SECTION_ORDER, FONT_ORDER, LOGO_ORDER, WAVE_ORDER, TUNE_ORDER, defaultSpec, cleanText, cleanGreet } from './spec.ts';
+import { SECTION_ORDER, FONT_ORDER, LOGO_ORDER, WAVE_ORDER, TUNE_ORDER, defaultSpec, cleanText, cleanGreet, capBytes } from './spec.ts';
 import type { Spec } from './spec.ts';
 
 const RAMP_ORDER = Object.keys(RAMPS) as RampName[];
@@ -28,7 +28,7 @@ export function encodeSpec(s: Spec): string {
   if (s.logo !== 'auto') bits |= B.logo;
   if (s.tune !== 'auto') bits |= B.tune;
   const enc = new TextEncoder();
-  const texts = [cleanText(s.text), s.greetz.map(cleanGreet).filter(Boolean).join(','), cleanText(s.credits, 24)];
+  const texts = [cleanText(s.text), capBytes(s.greetz.map(cleanGreet).filter(Boolean).join(','), 200), cleanText(s.credits, 24)];
   if (texts[0]) bits |= B.text;
   if (texts[1]) bits |= B.greetz;
   if (texts[2]) bits |= B.credits;
