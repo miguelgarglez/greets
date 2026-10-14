@@ -1,10 +1,19 @@
-// rasterizes Press Start 2P glyphs into tight bitmap canvases.
-// the font is OFL; we bundle the ttf and crop each glyph's ink box.
+// rasterizes bundled OFL pixel fonts into tight bitmap canvases.
+// each glyph's ink box is cropped so layout math uses real pixels.
+import type { FontId } from './spec.ts';
+
 export interface Glyph { cv: HTMLCanvasElement; w: number; h: number; ox: number; oy: number }
 export interface PixelFont { px: number; get(c: string): Glyph | null; textW(s: string, spacing?: number): number }
 
-export async function loadPixelFont(px = 8): Promise<PixelFont> {
-  const face = new FontFace('PS2P', 'url(/fonts/press-start-2p.ttf)');
+export const FONTS: Record<FontId, { file: string; family: string; px: number; line: number }> = {
+  ps2p: { file: '/fonts/press-start-2p.ttf', family: 'PS2P', px: 8, line: 8 },
+  silk: { file: '/fonts/silkscreen-bold.ttf', family: 'SILKB', px: 8, line: 8 },
+  vt: { file: '/fonts/vt323.ttf', family: 'VT323', px: 11, line: 8 },
+};
+
+export async function loadPixelFont(id: FontId = 'ps2p'): Promise<PixelFont> {
+  const { file, family, px } = FONTS[id];
+  const face = new FontFace(family, `url(${file})`);
   await face.load();
   document.fonts.add(face);
   await document.fonts.ready;
@@ -19,7 +28,7 @@ export async function loadPixelFont(px = 8): Promise<PixelFont> {
     let g = cache.get(c);
     if (g) return g;
     sx.clearRect(0, 0, scratch.width, scratch.height);
-    sx.font = `${px}px PS2P`;
+    sx.font = `${px}px ${family}`;
     sx.textBaseline = 'top';
     sx.fillStyle = '#fff';
     sx.fillText(c, px, px);
@@ -35,7 +44,7 @@ export async function loadPixelFont(px = 8): Promise<PixelFont> {
     const cv = document.createElement('canvas');
     cv.width = x1 - x0 + 1; cv.height = y1 - y0 + 1;
     const ctx = cv.getContext('2d')!;
-    ctx.font = `${px}px PS2P`;
+    ctx.font = `${px}px ${family}`;
     ctx.textBaseline = 'top';
     ctx.fillStyle = '#fff';
     ctx.fillText(c, px - x0, px - y0);

@@ -24,23 +24,24 @@ const CLOSERS = [
 ];
 const CREW = ['FAIRLIGHT', 'RAZOR 1911', 'SCOOPEX', 'SANITY', 'RED SECTOR', 'QUARTET', 'PHENOMENA', 'TRISTAR', 'THE SILENTS', 'CRIONICS'];
 
-export function makeScrolltext(name: string, touch = false): string {
+export function makeScrolltext(name: string, touch = false, credits = 'GREETS DEV'): string {
   const rng = mulberry32(hashName(name) ^ 0x5eed);
   const parts = [
     `${pick(rng, OPENERS)} ${name.toUpperCase()} +++ `,
     touch ? 'TAP TO MUTE THE TUNE +++ ' : 'PRESS M OR TAP TO MUTE THE TUNE +++ ',
+    'E OPENS THE CONTROL DECK - MAKE IT YOURS +++ ',
     pick(rng, BOASTS) + ' +++ ',
     `GREETINGS ALSO FLY TO ${shuffle(rng, [...CREW]).slice(0, 4).join(' - ')} +++ `,
-    `SHARE THIS ONE - GREETS DEV / ${name.toUpperCase()} +++ `,
+    `SHARE THIS ONE - ${credits} / ${name.toUpperCase()} +++ `,
     pick(rng, BOASTS) + ' +++ ',
     pick(rng, CLOSERS) + '     ',
   ];
   return parts.join('').toUpperCase();
 }
 
-export function makeGreetz(name: string): string[] {
+export function makeGreetz(name: string, credits = 'GREETS DEV'): string[] {
   const rng = mulberry32(hashName(name) ^ 0xbeef);
   const picks = shuffle(rng, [...CREW]).slice(0, 5);
-  const list = [...picks.slice(0, 2), 'YOU', ...picks.slice(2), 'GREETS DEV'];
+  const list = [...picks.slice(0, 2), 'YOU', ...picks.slice(2), credits];
   return list;
 }

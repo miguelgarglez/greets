@@ -1,13 +1,21 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import type { CSSProperties } from 'react';
 import { Demo, RAMPS } from './lib/demo.ts';
-import type { RampName } from './lib/demo.ts';
+import type { DemoAssets, RampName } from './lib/demo.ts';
 import { loadPixelFont } from './lib/font.ts';
+import type { FontId } from './lib/spec.ts';
+import type { PixelFont } from './lib/font.ts';
 import { hashName, mulberry32, pick } from './lib/prng.ts';
 import { makeScrolltext, makeGreetz } from './lib/scrolltext.ts';
+import { defaultSpec, resolveSpec, randomizeStyle, cleanText } from './lib/spec.ts';
+import type { Spec, Resolved } from './lib/spec.ts';
+import { encodeSpec, decodeSpec } from './lib/link.ts';
 import { generateTune } from './lib/tune.ts';
 import { bootAudio } from './lib/audio.ts';
 import type { Deck } from './lib/audio.ts';
+import { exportGif, exportVideo } from './lib/export.ts';
+import ControlDeck from './Deck.tsx';
+import type { ExportUi } from './Deck.tsx';
 import { WebHaptics } from 'web-haptics';
 
 function pathName(): string | null {
@@ -25,16 +33,34 @@ const TOUCH = typeof navigator !== 'undefined' && navigator.maxTouchPoints > 0;
 
 export default function App() {
   const [name, setName] = useState<string | null>(pathName);
+  const [spec, setSpec] = useState<Spec>(() => decodeSpec(location.hash, pathName() ?? ''));
   const [phase, setPhase] = useState<Phase>(name ? 'preboot' : 'landing');
+  const [deckOpen, setDeckOpen] = useState(false);
   const [draft, setDraft] = useState('');
   const [rockerDown, setRockerDown] = useState(false);
+  const [exp, setExp] = useState<ExportUi>({ busy: false, frac: 0, label: '', result: null, error: null });
+  const [linkNote, setLinkNote] = useState('copies the link with all your settings');
   const demoName = name ?? 'STRANGER';
   const seed = hashName(demoName);
-  const ramp = pick(mulberry32(seed ^ 0xface), Object.keys(RAMPS)) as RampName;
+  const autoRamp = pick(mulberry32(seed ^ 0xface), Object.keys(RAMPS)) as RampName;
+  const resolved = useMemo<Resolved>(() => resolveSpec(
+    { ...spec, name: demoName }, seed, autoRamp,
+    (cr) => makeGreetz(demoName, cr),
+  ), [spec, demoName, seed]);
+  const scrolltext = useMemo(() => {
+    const t = cleanText(spec.text).toUpperCase();
+    return t ? t + '  +++  ' : makeScrolltext(demoName, TOUCH, resolved.credits);
+  }, [spec.text, demoName, resolved.credits]);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
   const deckRef = useRef<Deck | null>(null);
+  const demoRef = useRef<Demo | null>(null);
   const hapticsRef = useRef<WebHaptics | null>(null);
+  const abortRef = useRef<AbortController | null>(null);
+  const fontsRef = useRef(new Map<FontId, PixelFont>());
+  const fontNowRef = useRef<PixelFont | null>(null);
+  const greetzRef = useRef<string[]>(resolved.greetz);
+  greetzRef.current = resolved.greetz;
   const mutedRef = useRef(false);
   try { mutedRef.current = localStorage.getItem('greets-muted') === '1'; } catch { /* private mode */ }
   const phaseRef = useRef(phase);
@@ -44,22 +70,54 @@ export default function App() {
   const draftRef = useRef(draft);
   draftRef.current = draft;
   // the boot thud — web-haptics covers iOS via audio ticks; muted kills it too
-  const thud = () => {
+  const thud = (n = 18) => {
     if (REDUCED || mutedRef.current) return;
     hapticsRef.current ??= new WebHaptics();
-    void hapticsRef.current.trigger(18);
+    void hapticsRef.current.trigger(n);
   };
   const powerRef = useRef({ started: 0, done: 0, pressAt: 0 });
+
+  const assetsFor = (font: PixelFont): DemoAssets => ({
+    font, name: demoName, seed, ramp: resolved.ramp, scrolltext,
+    sections: resolved.sections, scrollSpeed: resolved.speed,
+    wave: resolved.wave, logoMode: resolved.logo,
+  });
+
+  const getFont = async (id: FontId): Promise<PixelFont> => {
+    let f = fontsRef.current.get(id);
+    if (!f) { f = await loadPixelFont(id); fontsRef.current.set(id, f); }
+    return f;
+  };
+
+  // the URL is the spec — every patch rewrites the hash, every external
+  // navigation re-decodes it
+  useEffect(() => {
+    const h = encodeSpec(spec);
+    const url = (name ? '/' + encodeURIComponent(name.toLowerCase()) : '/') + (h ? '#' + h : '');
+    if (location.pathname + location.hash !== url) history.replaceState(null, '', url);
+  }, [spec, name]);
+
+  useEffect(() => {
+    const onNav = () => {
+      setName(pathName());
+      setSpec(decodeSpec(location.hash, pathName() ?? ''));
+    };
+    addEventListener('hashchange', onNav);
+    addEventListener('popstate', onNav);
+    return () => { removeEventListener('hashchange', onNav); removeEventListener('popstate', onNav); };
+  }, []);
 
   useEffect(() => {
     let stop = false;
     let raf = 0;
+    let alive = true;
     (async () => {
-      const font = await loadPixelFont();
-      if (stop || !canvasRef.current) return;
-      const demo = new Demo(canvasRef.current, { font, name: demoName, seed, ramp, scrolltext: makeScrolltext(demoName, TOUCH) });
-      const greetz = makeGreetz(demoName);
-      const tune = generateTune(seed);
+      const font = await getFont(resolved.font);
+      if (stop || !canvasRef.current || !alive) return;
+      fontNowRef.current = font;
+      const demo = new Demo(canvasRef.current, assetsFor(font));
+      demoRef.current = demo;
+      const tune = resolved.tune === 'off' ? null : generateTune(resolved.tuneSeed);
       const t0 = performance.now();
       const frame = (now: number) => {
         if (stop) return;
@@ -91,18 +149,55 @@ export default function App() {
           const sinceBoot = (now - powerRef.current.done) / 1000;
           const lt = t - Math.floor(t / 9) * 9;
           if (sinceBoot < 1.4) demo.renderIntro(sinceBoot, lt, name);
-          else { demo.muted = mutedRef.current; demo.renderLoop(t, greetz); }
+          else { demo.muted = mutedRef.current; demo.renderLoop(t, greetzRef.current); }
         }
         if (!(REDUCED && ph === 'running')) raf = requestAnimationFrame(frame);
       };
       raf = requestAnimationFrame(frame);
       // prebuild audio so the gesture plays instantly
-      deckRef.current = bootAudio(tune);
-      deckRef.current.gain.gain.value = mutedRef.current ? 0 : 0.8;
+      deckRef.current = tune ? bootAudio(tune) : null;
+      if (deckRef.current) deckRef.current.gain.gain.value = mutedRef.current ? 0 : 0.8;
     })();
-    return () => { stop = true; cancelAnimationFrame(raf); deckRef.current?.stop(); deckRef.current?.ctx.close(); };
+    return () => { stop = true; alive = false; cancelAnimationFrame(raf); demoRef.current = null; deckRef.current?.stop(); deckRef.current?.ctx.close(); };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [name]);
+
+  // live re-bake when the deck changes anything but the name
+  const configTok = useRef(0);
+  useEffect(() => {
+    const tok = ++configTok.current;
+    (async () => {
+      const font = await getFont(resolved.font);
+      if (tok !== configTok.current) return;
+      fontNowRef.current = font;
+      demoRef.current?.configure(assetsFor(font));
+    })();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [resolved]);
+
+  // the tune dial re-cuts the song under the needle
+  const tuneSeedRef = useRef(resolved.tuneSeed);
+  useEffect(() => {
+    if (tuneSeedRef.current === resolved.tuneSeed) return;
+    tuneSeedRef.current = resolved.tuneSeed;
+    const wasPlaying = phaseRef.current === 'running' || phaseRef.current === 'poweron';
+    deckRef.current?.stop();
+    deckRef.current?.ctx.close();
+    deckRef.current = resolved.tune === 'off' ? null : bootAudio(generateTune(resolved.tuneSeed));
+    if (deckRef.current) {
+      deckRef.current.gain.gain.value = mutedRef.current ? 0 : 0.8;
+      if (wasPlaying) { void deckRef.current.ctx.resume(); deckRef.current.play(); }
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [resolved.tuneSeed]);
+
+  const toggleMute = () => {
+    const d = deckRef.current;
+    if (!d) return;
+    mutedRef.current = !mutedRef.current;
+    d.gain.gain.value = mutedRef.current ? 0 : 0.8;
+    try { localStorage.setItem('greets-muted', mutedRef.current ? '1' : '0'); } catch { /* private mode */ }
+  };
 
   useEffect(() => {
     const boot = () => {
@@ -115,33 +210,24 @@ export default function App() {
       }
     };
     const onKey = (e: KeyboardEvent) => {
+      if ((e.target as HTMLElement | null)?.closest?.('input, textarea, [contenteditable]')) return;
       if (phaseRef.current === 'preboot') { e.preventDefault(); boot(); }
-      else if ((e.key === 'm' || e.key === 'M') && phaseRef.current === 'running') {
-        const d = deckRef.current;
-        if (d) {
-          mutedRef.current = !mutedRef.current;
-          d.gain.gain.value = mutedRef.current ? 0 : 0.8;
-          try { localStorage.setItem('greets-muted', mutedRef.current ? '1' : '0'); } catch { /* private mode */ }
-        }
-      }
+      else if ((e.key === 'm' || e.key === 'M') && phaseRef.current === 'running') toggleMute();
+      else if ((e.key === 'e' || e.key === 'E') && phaseRef.current === 'running') { setDeckOpen((v) => !v); thud(8); }
+      else if (e.key === 'Escape' && phaseRef.current === 'running') setDeckOpen(false);
     };
-    const onTap = () => {
+    const onTap = (e: PointerEvent) => {
+      if ((e.target as HTMLElement | null)?.closest?.('.deck, .fab')) return;
       if (phaseRef.current === 'preboot') {
         // the power key shows the press for a beat before the beam fires
         powerRef.current.pressAt = performance.now();
         setTimeout(boot, 240);
-      } else if (phaseRef.current === 'running') {
-        const d = deckRef.current;
-        if (d) {
-          mutedRef.current = !mutedRef.current;
-          d.gain.gain.value = mutedRef.current ? 0 : 0.8;
-          try { localStorage.setItem('greets-muted', mutedRef.current ? '1' : '0'); } catch { /* private mode */ }
-        }
-      }
+      } else if (phaseRef.current === 'running') toggleMute();
     };
     addEventListener('keydown', onKey);
     addEventListener('pointerdown', onTap);
     return () => { removeEventListener('keydown', onKey); removeEventListener('pointerdown', onTap); };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const submit = () => {
@@ -153,8 +239,62 @@ export default function App() {
     setPhase('toboot');
   };
 
+  const patch = (p: Partial<Spec>) => { setSpec((s) => ({ ...s, ...p })); thud(8); };
+  const rename = (n: string) => {
+    history.pushState(null, '', '/' + encodeURIComponent(n.toLowerCase()) + location.hash);
+    setSpec((s) => ({ ...s, name: n }));
+    // the new name deserves its own landing — replay the letter intro
+    powerRef.current.done = performance.now();
+    setName(n);
+  };
+
+  const doExport = async (kind: 'gif' | 'video') => {
+    const font = fontNowRef.current;
+    if (!font || exp.busy) return;
+    const ac = new AbortController();
+    abortRef.current = ac;
+    setExp({ busy: true, frac: 0, label: 'WARMING UP', result: null, error: null });
+    const prog = (frac: number, label: string) => setExp((e) => ({ ...e, frac, label }));
+    try {
+      const assets = assetsFor(font);
+      const tune = resolved.tune === 'off' ? null : generateTune(resolved.tuneSeed);
+      const r = kind === 'gif'
+        ? await exportGif(assets, resolved.greetz, resolved.ramp, prog, ac.signal)
+        : await exportVideo(assets, resolved.greetz, resolved.ramp, tune, prog, ac.signal);
+      setExp({ busy: false, frac: 1, label: 'DONE', result: r, error: null });
+    } catch (e) {
+      const msg = e instanceof DOMException && e.name === 'AbortError' ? 'CANCELLED'
+        : e instanceof Error && /record|encode/i.test(e.message) ? 'THIS BROWSER CANNOT PRINT FILM'
+        : 'THE PRESS JAMMED';
+      setExp({ busy: false, frac: 0, label: '', result: null, error: msg });
+    }
+  };
+  const saveResult = () => {
+    if (!exp.result) return;
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(exp.result.blob);
+    a.download = `greets-${resolved.name.toLowerCase()}.${exp.result.ext}`;
+    a.click();
+    setTimeout(() => URL.revokeObjectURL(a.href), 5000);
+  };
+  const shareFile = async () => {
+    if (!exp.result) return;
+    const f = new File([exp.result.blob], `greets-${resolved.name.toLowerCase()}.${exp.result.ext}`, { type: exp.result.blob.type });
+    try {
+      if (navigator.canShare?.({ files: [f] })) await navigator.share({ files: [f] });
+      else saveResult();
+    } catch { /* user closed the sheet */ }
+  };
+  const shareLink = async () => {
+    const url = location.href;
+    try {
+      if (navigator.share) await navigator.share({ url });
+      else { await navigator.clipboard.writeText(url); setLinkNote('copied'); setTimeout(() => setLinkNote('copies the link with all your settings'), 1600); }
+    } catch { /* sheet dismissed */ }
+  };
+
   return (
-    <div className="app">
+    <div className={'app' + (deckOpen ? ' editing' : '')}>
       <div className="room" />
       <div className="tube">
         <canvas ref={canvasRef} className="demoscreen" aria-label={`cracktro greeting ${name ?? ''}`} />
@@ -179,9 +319,31 @@ export default function App() {
       {TOUCH && phase === 'preboot' && (
         <button
           className={'rocker' + (rockerDown ? ' down' : '')}
-          style={{ '--hot': RAMPS[ramp][6] } as CSSProperties}
+          style={{ '--hot': RAMPS[resolved.ramp][6] } as CSSProperties}
           aria-label="power on"
           onPointerDown={() => { setRockerDown(true); setTimeout(() => setRockerDown(false), 400); }}
+        />
+      )}
+      {phase === 'running' && !deckOpen && (
+        <button type="button" className="fab" style={{ '--hot': RAMPS[resolved.ramp][6] } as CSSProperties}
+          aria-label="open the control deck" onClick={() => { setDeckOpen(true); thud(8); }}>
+          EDIT
+        </button>
+      )}
+      {deckOpen && phase === 'running' && (
+        <ControlDeck
+          spec={spec} resolved={resolved} hot={RAMPS[resolved.ramp][6]} exp={exp}
+          onPatch={patch}
+          onRename={rename}
+          onExport={doExport}
+          onCancelExport={() => { abortRef.current?.abort(); setExp({ busy: false, frac: 0, label: '', result: null, error: null }); }}
+          onSave={saveResult}
+          onShareFile={shareFile}
+          onShareLink={shareLink}
+          onRandomize={() => { setSpec((s) => randomizeStyle(s, mulberry32(Date.now() & 0xffffffff), Object.keys(RAMPS) as RampName[])); thud(24); }}
+          onReset={() => setSpec(defaultSpec(demoName))}
+          onClose={() => setDeckOpen(false)}
+          linkNote={linkNote}
         />
       )}
     </div>

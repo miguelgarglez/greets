@@ -2,7 +2,8 @@
 // everything is seeded: same name, same demo.
 import type { PixelFont } from './font.ts';
 import { bakeLogo } from './font.ts';
-import { mulberry32, pick, shuffle } from './prng.ts';
+import { mulberry32, pick } from './prng.ts';
+import type { SectionId, LogoMode } from './spec.ts';
 
 export const W = 320, H = 200;
 
@@ -19,37 +20,48 @@ export const RAMPS: Record<string, string[]> = {
 };
 export type RampName = keyof typeof RAMPS;
 
+export type { SectionId, LogoMode } from './spec.ts';
+
 export interface DemoAssets {
   font: PixelFont;
   name: string;
   seed: number;
   ramp: RampName;
   scrolltext: string;
+  sections: SectionId[];          // ordered; the greetz roll always follows
+  scrollSpeed: number;            // 1 = stock
+  wave: [number, number, number]; // scroller sine: amp, spatial freq, temporal freq
+  logoMode: LogoMode;
 }
 
 interface Star { x: number; y: number; z: number }
 
 export class Demo {
   private ctx: CanvasRenderingContext2D;
-  private font: PixelFont;
-  private logo: { cv: HTMLCanvasElement; w: number; h: number };
-  private stars: Star[];
-  private ramp: string[];
-  private scrolltext: string;
+  private font!: PixelFont;
+  private name = '';
+  private logo!: { cv: HTMLCanvasElement; w: number; h: number };
+  private stars: Star[] = [];
+  private ramp!: string[];
+  private scrolltext = '';
   private plasmaImg: ImageData;
-  private plasmaPal: Uint32Array;
-  private sections: string[];
-  private colLetter: Int16Array;
+  private plasmaPal!: Uint32Array;
+  private sections: SectionId[] = [];
+  private colLetter!: Int16Array;
+  private scrollSpeed = 1;
+  private wave: [number, number, number] = [5, 0.055, 3.2];
+  private logoMode: LogoMode = 'wave';
 
   constructor(cv: HTMLCanvasElement, a: DemoAssets) {
     cv.width = W; cv.height = H;
     this.ctx = cv.getContext('2d')!;
     this.ctx.imageSmoothingEnabled = false;
-    this.font = a.font;
-    this.ramp = RAMPS[a.ramp];
-    this.scrolltext = a.scrolltext;
-    const rng = mulberry32(a.seed);
-    this.stars = Array.from({ length: 150 }, () => ({ x: rng() * W, y: rng() * H, z: pick(rng, [0.25, 0.55, 1]) }));
+    this.plasmaImg = new ImageData(W, H);
+    this.applyAssets(a);
+  }
+
+  private bakeLogo() {
+    const a = { font: this.font, name: this.name };
     let scale = a.name.length <= 7 ? 4 : a.name.length <= 10 ? 3 : 2;
     const baked = bakeLogo(a.font, a.name, scale, [[0, '#ffffff'], [0.55, '#e8e8ff'], [0.8, this.ramp[4]], [1, this.ramp[2]]]);
     let logo: { cv: HTMLCanvasElement; w: number; h: number };
@@ -72,9 +84,35 @@ export class Demo {
     baked.spans.forEach(([x0, x1], i) => {
       for (let x = Math.round(x0); x < Math.round(x1) && x < this.colLetter.length; x++) this.colLetter[x] = i;
     });
-    this.plasmaImg = new ImageData(W, H);
-    this.plasmaPal = this.buildPlasmaPalette(a.ramp);
-    this.sections = shuffle(rng, ['classic', 'plasma', 'blitter']);
+    this.solidCache.clear();
+    this.glyphCache.clear();
+    this.plasmaMaskCv = null;
+  }
+
+  private applyAssets(a: DemoAssets) {
+    const fontChanged = this.font !== a.font;
+    const rampChanged = this.ramp !== RAMPS[a.ramp];
+    this.font = a.font;
+    this.ramp = RAMPS[a.ramp];
+    this.scrolltext = a.scrolltext;
+    this.scrollSpeed = a.scrollSpeed;
+    this.wave = a.wave;
+    this.logoMode = a.logoMode;
+    this.sections = a.sections;
+    if (fontChanged || rampChanged || this.name !== a.name) {
+      this.name = a.name;
+      this.bakeLogo();
+    }
+    if (rampChanged) this.plasmaPal = this.buildPlasmaPalette(a.ramp);
+    if (!this.stars.length) {
+      const rng = mulberry32(a.seed);
+      this.stars = Array.from({ length: 150 }, () => ({ x: rng() * W, y: rng() * H, z: pick(rng, [0.25, 0.55, 1]) }));
+    }
+  }
+
+  // live re-bake from the control deck — the demo keeps playing under it
+  configure(a: DemoAssets) {
+    this.applyAssets(a);
   }
 
   private buildPlasmaPalette(ramp: RampName): Uint32Array {
@@ -136,8 +174,21 @@ export class Demo {
 
   private waveLogo(t: number, cy: number, trail = true) {
     const c = this.ctx;
+    if (this.logoMode === 'still') {
+      c.drawImage(this.logo.cv, (W - this.logo.w) / 2, cy);
+      return;
+    }
     const x0 = (W - this.logo.w) / 2;
     const draws = trail ? [{ d: -0.11, a: 0.25 }, { d: -0.055, a: 0.45 }, { d: 0, a: 1 }] : [{ d: 0, a: 1 }];
+    if (this.logoMode === 'bounce') {
+      for (const { d, a } of draws) {
+        c.globalAlpha = a;
+        const p = this.bouncePos(t + d);
+        c.drawImage(this.logo.cv, p[0], p[1]);
+      }
+      c.globalAlpha = 1;
+      return;
+    }
     for (const { d, a } of draws) {
       c.globalAlpha = a;
       for (let x = 0; x < this.logo.w; x++) {
@@ -148,9 +199,22 @@ export class Demo {
     c.globalAlpha = 1;
   }
 
+  // dvd-style bounce position, clamped inside the copper band — shared by
+  // the blitter section and the bounce logo mode
+  private bouncePos(t: number): [number, number] {
+    const lw = this.logo.w, lh = this.logo.h;
+    const yTop = 42, yBot = Math.max(yTop + 8, 134 - lh);
+    const bh = yBot - yTop, bw = W - lw - 16;
+    return [
+      8 + bw * (0.5 - 0.5 * Math.cos(t * 80 * Math.PI / bw)),
+      yTop + bh * (0.5 - 0.5 * Math.cos(t * 55 * Math.PI / bh)),
+    ];
+  }
+
   private scroller(t: number, scale = 2, yBase = H - 22) {
     const c = this.ctx;
-    const speed = 55;
+    const speed = 55 * this.scrollSpeed;
+    const [amp, sf, tf] = this.wave;
     const adv = this.font.px * scale * 1.0;
     const total = this.scrolltext.length * adv + W + 40;
     const off = (t * speed) % total;
@@ -159,7 +223,7 @@ export class Demo {
       const g = this.font.get(this.scrolltext[i]);
       const cw = g ? g.w * scale : adv * 0.6;
       if (x > -adv && x < W + adv && g) {
-        const y = yBase + Math.sin(t * 3.2 + x * 0.055) * 5;
+        const y = yBase + Math.sin(t * tf + x * sf) * amp;
         c.drawImage(g.cv, x, y, g.w * scale, g.h * scale);
       }
       x += cw + 1;
@@ -514,6 +578,7 @@ export class Demo {
       const s = this.sections[i];
       if (s === 'classic') this.renderClassic(lt);
       else if (s === 'plasma') this.renderPlasma(lt);
+      else if (s === 'copper') this.renderCopper(lt);
       else this.renderBlitter(lt);
     }
     // sections never teleport: a copper-clock wipe reveals the new frame
@@ -535,6 +600,20 @@ export class Demo {
     c.fillRect(W - half - 2, 0, 2, H);
   }
 
+  // a wall of raster bars — the full screen breathing in the name's ramp,
+  // each bar riding its own sine so the field rolls like sheet metal
+  renderCopper(t: number) {
+    const c = this.ctx;
+    c.fillStyle = this.ramp[0];
+    c.fillRect(0, 0, W, H);
+    for (let i = 0; i < 7; i++) {
+      const y = -8 + i * 30 + Math.sin(t * 1.3 + i * 0.9) * 14;
+      this.copperBar(y, t * 3 + i * 1.7);
+    }
+    this.waveLogo(t, H * 0.34);
+    this.scroller(t);
+  }
+
   renderBlitter(t: number) {
     const c = this.ctx;
     c.fillStyle = '#05050a';
@@ -543,19 +622,14 @@ export class Demo {
     this.copper(t);
     // the logo bounces dvd-style with trail, clamped to the band between the
     // copper bars; cosine easing so the turns read as motion, not math
-    const lw = this.logo.w, lh = this.logo.h;
-    // the red foot must clear the lower copper — clamp a few px above it —
-    // and the word stays inside the glass, off the bezel
-    const yTop = 42, yBot = Math.max(yTop + 8, 134 - lh);
-    const bh = yBot - yTop, bw = W - lw - 16;
-    const bounceX = (tt: number) => 8 + bw * (0.5 - 0.5 * Math.cos(tt * 80 * Math.PI / bw));
-    const bounceY = (tt: number) => yTop + bh * (0.5 - 0.5 * Math.cos(tt * 55 * Math.PI / bh));
     for (const [d, a] of [[-0.09, 0.2], [-0.045, 0.4]] as const) {
       c.globalAlpha = a;
-      c.drawImage(this.logo.cv, bounceX(t + d), bounceY(t + d));
+      const p = this.bouncePos(t + d);
+      c.drawImage(this.logo.cv, p[0], p[1]);
     }
     c.globalAlpha = 1;
-    c.drawImage(this.logo.cv, bounceX(t), bounceY(t));
+    const p = this.bouncePos(t);
+    c.drawImage(this.logo.cv, p[0], p[1]);
     this.scroller(t);
   }
 }
