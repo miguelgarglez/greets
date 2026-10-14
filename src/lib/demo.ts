@@ -267,7 +267,7 @@ export class Demo {
     }
     const m = this.plasmaMaskCv.getContext('2d')!;
     m.globalCompositeOperation = 'source-over';
-    m.fillStyle = 'rgba(3,3,8,0.8)';
+    m.fillStyle = 'rgba(3,3,8,0.62)';
     m.fillRect(0, 0, W, H);
     m.globalCompositeOperation = 'destination-out';
     m.drawImage(this.logo.cv, (W - this.logo.w) / 2, H * 0.3 + Math.sin(t * 1.2) * 6);
