@@ -122,10 +122,12 @@ export async function exportGif(assets: DemoAssets, greetz: string[], rampName: 
     await nextFrame();
   }
   const gif = GIFEncoder();
-  const total = n * 2 - 2;
+  const total = n * 2;
   const order: number[] = [];
+  // both endpoints written: the wrap lands on frame 0 exactly — a boomerang
+  // that skips its endpoints stutters at the two places the eye watches
   for (let i = 0; i < n; i++) order.push(i);
-  for (let i = n - 2; i > 0; i--) order.push(i);
+  for (let i = n - 1; i >= 0; i--) order.push(i);
   for (let i = 0; i < order.length; i++) {
     if (signal.aborted) throw new DOMException('cancelled', 'AbortError');
     // one global palette on the first frame — later frames just index into it

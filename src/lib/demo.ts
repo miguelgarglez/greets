@@ -251,7 +251,9 @@ export class Demo {
           + Math.sin(Math.hypot(x - W / 2, y - H / 2) * 0.05 - t * 1.3)
           + Math.sin(x * 0.11 - t * 1.7) * 0.7
           + Math.sin((x - y) * 0.09 + t * 1.5) * 0.7;
-        const idx = Math.max(0, Math.min(63, Math.round((v + 6.4) / 12.8 * 63)));
+        // the field never dies to black — the palette ride is biased into
+        // its lit range so the sea keeps moving even mid-cycle
+        const idx = Math.max(0, Math.min(63, Math.round((0.16 + 0.84 * ((v + 6.4) / 12.8)) * 63)));
         d[i] = pal[idx] & 0xff; d[i + 1] = (pal[idx] >> 8) & 0xff; d[i + 2] = (pal[idx] >> 16) & 0xff; d[i + 3] = 255;
         i += 4;
       }
@@ -283,14 +285,14 @@ export class Demo {
     }
   }
 
-  renderClassic(t: number, logo = true, scroll = true, ampScale = 1) {
+  renderClassic(t: number, logo = true, scroll = true, ampScale = 1, scrollT = t) {
     const c = this.ctx;
     c.fillStyle = '#05050a';
     c.fillRect(0, 0, W, H);
     this.starfield(t);
     this.copper(t);
     if (logo) this.waveLogo(t, H * 0.3);
-    if (scroll) this.scroller(t, 2, H - 22, ampScale);
+    if (scroll) this.scroller(scrollT, 2, H - 22, ampScale);
   }
 
   private solidCache = new Map<string, HTMLCanvasElement>();
@@ -365,23 +367,28 @@ export class Demo {
     c.beginPath();
     c.rect(0, 36, W, 118);
     c.clip();
+    if (!greetz.length) { c.restore(); this.copperBar(6, t * 3); this.copperBar(H - 30, t * 3 + 3); return; }
     const lineH = 22;
     const total = greetz.length * lineH;
-    // the roll wraps on itself — a name is always crossing the window;
-    // an empty pass under two copper rules is dead air, not a beat
-    const off = (t * 34) % total;
-    for (let j = 0; j * lineH < H + lineH + off; j++) {
-      const n = greetz[j % greetz.length];
-      const y = H - off + j * lineH;
-      if (y > H + lineH || y < -lineH) continue;
+    // the roll is an infinite tiled strip — every name repeats every `total`
+    // pixels of travel, so a one-name list fills the window and the wrap is
+    // seamless instead of a dark pass
+    const d = (t * 34) % total;
+    for (let i = 0; i < greetz.length; i++) {
+      const n = greetz[i];
       const scale = n === 'YOU' ? 2.6 : 2;
-      let x = (W - this.drawnW(n, scale)) / 2;
-      for (const ch of n) {
-        const gl = this.font.get(ch);
-        if (!gl) { x += 8 * scale * 0.5; continue; }
-        const bounce = n === 'YOU' ? Math.sin(t * 4 + x * 0.05) * 3 : 0;
-        c.drawImage(gl.cv, x, y + bounce, gl.w * scale, gl.h * scale);
-        x += gl.w * scale + 2;
+      const w = this.drawnW(n, scale);
+      for (let y = H - d - i * lineH; y < H + lineH; y += total) {
+        if (y < -lineH) continue;
+        const bounce = n === 'YOU' ? Math.sin(t * 4) * 3 : 0;
+        const x0 = (W - w) / 2;
+        let x = x0;
+        for (const ch of n) {
+          const gl = this.font.get(ch);
+          if (!gl) { x += 8 * scale * 0.5; continue; }
+          c.drawImage(gl.cv, x, y + bounce, gl.w * scale, gl.h * scale);
+          x += gl.w * scale + 2;
+        }
       }
     }
     c.restore();
@@ -657,8 +664,8 @@ export class Demo {
     if (!m) return false;
     // absolute clock — a pin must not restart its crawl on the rotator's
     // 9-second boundary
-    if (m === 'greetz') this.renderGreetzBoard(greetz);
-    else if (m === 'scroll' && still) {
+    if (m === 'greetz') { this.renderGreetzBoard(greetz); return true; }
+    if (m === 'scroll' && still) {
       // the frozen pin parks the phrase centered in the band — a fragment
       // frozen mid-crawl is useless to the person editing it. shrink until
       // it fits, and if even that fails keep the START of the line, not
@@ -669,12 +676,19 @@ export class Demo {
       while (s > 0.5 && this.drawnW(line, s) > W - 16) s -= 0.25;
       while (line.length > 1 && this.drawnW(line, s) > W - 16) line = line.slice(0, -1);
       this.tinyText(line, H - 30, 0, s);
+      return true;
     }
     // the edit pin crawls slow and soft — the tube should read like the
     // field you're typing in, not pile the sentence on a steep sine
     this.pinY = H - 30;
     try {
-      if (m === 'scroll') this.renderClassic(t * 0.45, true, true, 0.55);
+      if (m === 'scroll') {
+        // the line you're typing walks on now — a fresh text restarts the
+        // crawl's clock so the first glyph is on the glass this frame,
+        // not after the old sentence has crawled off
+        if (this.scrolltext !== this.pinText) { this.pinText = this.scrolltext; this.pinT0 = t; }
+        this.renderClassic(t, true, true, 0.55, (t - this.pinT0) * 0.45);
+      }
       else if (m === 'classic') this.renderClassic(t);
       else if (m === 'plasma') this.renderPlasma(t);
       else if (m === 'copper') this.renderCopper(t);
@@ -699,8 +713,12 @@ export class Demo {
       }
       // sections never teleport: a copper-clock wipe reveals the new frame.
       // while the tube itself is moving (deck park in or out) the shutters
-      // hold — a wipe fired through a resize is the slit, not a transition
-      if (performance.now() >= this.wipeHoldUntil) this.wipe(lt / 0.45);
+      // hold — a wipe fired through a resize is the slit, not a transition.
+      // a held wipe doesn't arrive half-closed when the hold ends: if the
+      // hold covered this section's window, that wipe is consumed
+      const held = performance.now() < this.wipeHoldUntil;
+      if (held) this.wipeSkipSec = Math.floor(t / 9);
+      else if (lt < 0.45 && this.wipeSkipSec !== Math.floor(t / 9)) this.wipe(lt / 0.45);
     }
     // the mute badge sits above any pin — silence must be visible; a fresh
     // boot answers the same way so the state is never inferred
@@ -711,6 +729,12 @@ export class Demo {
   // suppress the section wipe for a wall-clock window — set while CSS is
   // still parking or releasing the tube
   wipeHoldUntil = 0;
+  // a section whose wipe window was spent inside a hold — the shutters
+  // must not slam half-closed the moment the hold lifts
+  wipeSkipSec = -1;
+  // the pinned scroller's own clock — set when the text it shows changes
+  pinText = '';
+  pinT0 = 0;
   holdWipe(ms: number) { this.wipeHoldUntil = Math.max(this.wipeHoldUntil, performance.now() + ms); }
   // the SND ON badge's lease — set as the running phase begins
   sndOnUntil = 0;

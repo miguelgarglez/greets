@@ -142,15 +142,15 @@ body { background: #060608; overflow: hidden; font-family: 'PS2P', monospace; }
   border-radius: 10px 10px 0 0;
   box-shadow: 0 -18px 60px rgba(0,0,0,0.65), 0 0 40px color-mix(in srgb, var(--hot, #f80) 8%, transparent);
   font-family: 'PS2P', monospace;
-  /* the tube parks first, then the bay unfolds from the EDIT key's corner —
-     during the delay it sits invisible where the key was (backwards fill) */
+  /* the tube parks first, then the bay rises off the bottom edge —
+     it never crosses the glass on the way in (backwards fill keeps it
+     hidden during the delay while the tube settles) */
   animation: deckin 0.34s 0.34s cubic-bezier(0.2, 0.9, 0.25, 1) backwards;
   overflow: hidden;
 }
 @keyframes deckin {
-  from { transform: translate(44vw, -62vh) scale(0.24); opacity: 0; }
-  40% { opacity: 1; }
-  to { transform: translate(0, 0) scale(1); opacity: 1; }
+  from { transform: translateY(102%); opacity: 0.4; }
+  to { transform: translateY(0); opacity: 1; }
 }
 
 .deckhead {
@@ -245,8 +245,9 @@ body { background: #060608; overflow: hidden; font-family: 'PS2P', monospace; }
 
 .dinput {
   /* the bay speaks in two sizes — captions at 10px, the words you're
-     actually writing one size up so the field reads as the value */
-  font-family: 'PS2P', monospace; font-size: 12px; color: #f2f2fa;
+     actually writing clearly larger; 16px also keeps iOS from zooming
+     a focused field in an overflow-hidden page */
+  font-family: 'PS2P', monospace; font-size: 16px; color: #f2f2fa;
   background: transparent;
   border: 0; border-bottom: 1px dashed #4a4a60;
   padding: 8px 2px 7px; caret-color: var(--hot, #f80);
@@ -266,10 +267,9 @@ body { background: #060608; overflow: hidden; font-family: 'PS2P', monospace; }
 
 @media (max-width: 720px) {
   .app .tube { transition: none; }
-  /* on a phone the tube docks to the top safe area while the bay works —
-     the leftover room belongs under the glass, not split around it, and
-     the bay still owns the bottom edge */
-  .app.editing .tube { margin-block: 0; margin-top: max(10px, env(safe-area-inset-top)); margin-bottom: 8px; }
+  /* the tube centers in the room above the bay — balanced breathing room
+     beats one long black shelf under the glass */
+  .app.editing .tube { margin-block: auto; }
   .app.editing .deck { margin-top: auto; }
   /* four rigs, four equal cells — ACID never orphans a row */
   .rigkeys { display: grid; grid-template-columns: 1fr 1fr; }
@@ -285,7 +285,7 @@ body { background: #060608; overflow: hidden; font-family: 'PS2P', monospace; }
   .deckx { min-width: 44px; min-height: 44px; }
   .dlabel { width: 68px; font-size: 10px; padding-top: 15px; }
   .dfields { grid-template-columns: 1fr; gap: 2px; }
-  .dinput { font-size: 12px; padding: 9px 2px 8px; }
+  .dinput { padding: 9px 2px 8px; }
   .dkeys .dnote { flex-basis: 100%; }
   .fab { right: 12px; top: max(12px, calc(env(safe-area-inset-top) + 8px)); }
   .deckfoot { padding-bottom: calc(13px + env(safe-area-inset-bottom)); }

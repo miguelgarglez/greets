@@ -160,7 +160,13 @@ export default function App() {
         else if (ph === 'preboot') demo.renderPreboot(t, TOUCH, now - powerRef.current.pressAt < 260);
         else if (ph === 'poweron') {
           const u = (now - powerRef.current.started) / 600;
-          if (u >= 1) { powerRef.current.done = now; demo.sndOnUntil = now + 2400; setPhase('running'); }
+          if (u >= 1) {
+            powerRef.current.done = now;
+            // no tune, nothing to announce — the badge claims a sound that
+            // doesn't exist on the OFF rig ('auto' resolves to a real tune)
+            if (specRef.current.tune !== 'off') demo.sndOnUntil = now + 2400;
+            setPhase('running');
+          }
           else demo.renderPowerOn(u, name, t);
         }
         else {
@@ -226,12 +232,13 @@ export default function App() {
   // is not a mute change and must not announce itself as one
   const [muteMsg, setMuteMsg] = useState('');
   const toggleMute = () => {
-    const d = deckRef.current;
-    if (!d) return;
+    // no deck = tune OFF — the flag still flips so the choice is already
+    // armed when a tune is switched back on
     mutedRef.current = !mutedRef.current;
     setMuted(mutedRef.current);
     setMuteMsg(mutedRef.current ? 'sound off' : 'sound on');
-    d.gain.gain.value = mutedRef.current ? 0 : 0.8;
+    const d = deckRef.current;
+    if (d) d.gain.gain.value = mutedRef.current ? 0 : 0.8;
     try { localStorage.setItem('greets-muted', mutedRef.current ? '1' : '0'); } catch { /* private mode */ }
     const dm = demoRef.current;
     if (REDUCED && dm) { dm.muted = mutedRef.current; dm.previewMode = previewRef.current; dm.renderReduced(greetzRef.current); }
@@ -256,12 +263,19 @@ export default function App() {
     if (!deckOpen) { root.style.removeProperty('--deckh'); return; }
     const el = document.querySelector('.deck') as HTMLElement | null;
     if (!el) return;
+    let lastH = 0;
     const ro = new ResizeObserver(() => {
       // publish the content height, not the squeezed border box — during the
       // entrance the column can overflow and flex shrinks the bay, and a
-      // squeezed (or detached, zero) frame must never retarget the tube
+      // squeezed (or detached, zero) frame must never retarget the tube.
+      // every retarget also re-arms the wipe hold — a tab switch resizes the
+      // tube and must not meet a shutter on the way
       const h = Math.max(el.scrollHeight, Math.round(el.getBoundingClientRect().height));
-      if (h > 0) root.style.setProperty('--deckh', `${h}px`);
+      if (h > 0 && h !== lastH) {
+        if (lastH > 0) demoRef.current?.holdWipe(500);
+        lastH = h;
+        root.style.setProperty('--deckh', `${h}px`);
+      }
     });
     ro.observe(el);
     return () => { ro.disconnect(); root.style.removeProperty('--deckh'); };
@@ -329,14 +343,14 @@ export default function App() {
   const patch = (p: Partial<Spec>) => {
     if (STYLE_KEYS.some((k) => k in p)) pushUndo();
     setSpec((s) => ({ ...s, ...p }));
-    thud(8);
+    // no thud here — the Chip's press already buzzes, and fields call patch
+    // on every keystroke; a patch must not mean a sound
   };
   const undo = () => {
     const prev = undoRef.current.pop();
     if (!prev) return;
     if (!undoRef.current.length) setCanUndo(false);
     setSpec((s) => ({ ...s, ...prev }));
-    thud(8);
   };
   // the deck pins the tube to the part being edited
   const previewRef = useRef<Preview>('');

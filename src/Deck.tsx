@@ -104,8 +104,9 @@ export default function Deck(props: {
   linkNote: string;
 }) {
   const { spec, resolved, hot, exp } = props;
-  // a thumb press confirms itself — the same thud the boot and EDIT use
-  const haptic = () => { if (navigator.maxTouchPoints > 0) props.onTap?.(); };
+  // every key press confirms itself — the same thud the boot and EDIT use;
+  // patch stays silent so typing isn't a drumroll
+  const haptic = () => props.onTap?.();
   const [tab, setTab] = useState<Tab>('rigs');
   const [nameDraft, setNameDraft] = useState('');
   // the greetz field edits a comma list — keep a raw draft so the comma the
@@ -113,11 +114,21 @@ export default function Deck(props: {
   // draft from spec when the field isn't the thing typing it
   const [greetzDraft, setGreetzDraft] = useState(spec.greetz.join(', '));
   const [greetzFocus, setGreetzFocus] = useState(false);
+  const xRef = useRef<HTMLButtonElement>(null);
+  // the manual link hands itself over — focused and selected the moment it
+  // appears, so one ⌘C is the whole interaction
+  const urlRef = useRef<HTMLInputElement>(null);
+  useEffect(() => {
+    if (props.linkState === 'manual') { urlRef.current?.focus({ preventScroll: true }); urlRef.current?.select(); }
+  }, [props.linkState]);
   // the exit key takes focus after the entrance, not while it is still
   // parked off-screen — focusing it early scrolls the page to it
-  const xRef = useRef<HTMLButtonElement>(null);
   useEffect(() => {
-    const t = setTimeout(() => xRef.current?.focus({ preventScroll: true }), 720);
+    const t = setTimeout(() => {
+      // don't steal focus out from under someone already typing in the bay
+      if (xRef.current && !xRef.current.closest('.deck')?.contains(document.activeElement))
+        xRef.current.focus({ preventScroll: true });
+    }, 720);
     return () => clearTimeout(t);
   }, []);
   // SAVE relabels once the download has actually been handed over — the
@@ -126,9 +137,15 @@ export default function Deck(props: {
   useEffect(() => setSaved(false), [exp.result]);
   useEffect(() => { if (!greetzFocus) setGreetzDraft(spec.greetz.join(', ')); }, [spec.greetz, greetzFocus]);
 
+  // a lit PARTS key is a preview: first press shows you the section on the
+  // tube; pressing the one already on the glass takes it out of the cycle.
+  // declared before the pin effect so the effect can reset it — otherwise a
+  // tab round-trip leaves a stale id and the next press deletes its part
+  const secPinRef = useRef<SectionId | ''>('');
   // the tube shows the thing you're turning: words and motion pin the
   // scroller, the greetz field pins the roll, everything else free-wheels
   useEffect(() => {
+    secPinRef.current = '';
     props.onPreview(greetzFocus ? 'greetz' : tab === 'words' || tab === 'motion' ? 'scroll' : '');
     return () => props.onPreview('');
   }, [tab, greetzFocus]); // eslint-disable-line react-hooks/exhaustive-deps
@@ -137,9 +154,6 @@ export default function Deck(props: {
   // be able to close while a field has focus
   const inputKeys = (e: React.KeyboardEvent) => { if (e.key !== 'Escape') e.stopPropagation(); };
   const secs = spec.sections === 'auto' ? ['classic', 'plasma', 'blitter'] as SectionId[] : spec.sections;
-  // a lit PARTS key is a preview: first press shows you the section on the
-  // tube; pressing the one already on the glass takes it out of the cycle
-  const secPinRef = useRef<SectionId | ''>('');
   const setSec = (id: SectionId) => {
     const has = secs.includes(id);
     if (has && secPinRef.current !== id) { secPinRef.current = id; props.onPreview(id); return; }
@@ -179,6 +193,7 @@ export default function Deck(props: {
                 // field's blur doesn't fire under a synthetic click — but
                 // only blur what's inside the body, or focus falls off the
                 // tab row entirely
+                haptic();
                 setGreetzFocus(false);
                 const ae = document.activeElement as HTMLElement | null;
                 if (ae?.closest?.('.deckbody')) ae.blur();
@@ -191,7 +206,7 @@ export default function Deck(props: {
         {/* the deck is a dialog — opening it hands focus to its exit key,
             but only once the bay has landed; autoFocus during the entrance
             fill scrolls an off-screen key into view and yanks the tube */}
-        <button type="button" ref={xRef} className="key deckx" onClick={props.onClose} aria-label="close deck">×</button>
+        <button type="button" ref={xRef} className="key deckx" onClick={() => { haptic(); props.onClose(); }} aria-label="close deck">×</button>
       </div>
 
       <div className="deckbody">
@@ -282,7 +297,6 @@ export default function Deck(props: {
             <Row label="PARTS">
               {SECTION_ORDER.map((s) => (
                 <Chip key={s} toggle on={secs.includes(s)} hot={hot} label={SEC_LABELS[s]}
-                  disabled={secs.includes(s) && secs.length === 1}
                   onPress={() => setSec(s)} />
               ))}
               <span className="dnote">+ GREETZ ALWAYS</span>
@@ -355,7 +369,7 @@ export default function Deck(props: {
               {props.linkState === 'manual' ? (
                 // the clipboard refused — the URL holds as a real field that
                 // selects itself until the next press, not a note that hides
-                <input className="dinput urlline" readOnly value={props.linkNote} aria-label="share link"
+                <input ref={urlRef} className="dinput urlline" readOnly value={props.linkNote} aria-label="share link"
                   onFocus={(e) => e.currentTarget.select()} />
               ) : (
                 <span className="dnote" aria-live="polite">{props.linkNote}</span>

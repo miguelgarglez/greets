@@ -87,9 +87,10 @@ const dims = await mob.evaluate(() => {
 console.log('mobile dims', dims);
 if (dims.keyH < 44 || dims.tabH < 44) throw new Error(`touch target under 44px: ${JSON.stringify(dims)}`);
 if (dims.deckTop <= dims.tubeTop + dims.tubeH - 4) throw new Error(`deck overlaps tube: ${JSON.stringify(dims)}`);
-// on a phone the tube docks to the top safe area while the bay owns the
-// bottom edge — headroom stays small, the room below the glass is composed
-if (dims.tubeTop > 24) throw new Error(`tube not docked to the top: ${JSON.stringify(dims)}`);
+// on a phone the tube centers in the room above the bay — the leftover air
+// splits around the glass instead of pooling in one black shelf under it
+if (dims.tubeTop < 12 || dims.tubeTop > 90) throw new Error(`tube not centered in its room: ${JSON.stringify(dims)}`);
+if (Math.abs(dims.gap - dims.tubeTop) > 60) throw new Error(`room not balanced around the tube: ${JSON.stringify(dims)}`);
 if (dims.deckBottom < dims.vh - 8) throw new Error(`deck does not reach bottom: ${JSON.stringify(dims)}`);
 // and the bay itself must be content-sized — the last row should sit near
 // the foot, not float above an empty well
