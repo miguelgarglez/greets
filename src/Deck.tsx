@@ -1,7 +1,7 @@
 // the control deck — demoscene chrome for the machine under the tube.
 // one rack at a time: tabs hold the groups, the MAKE rail never leaves,
 // and the tube stays in view while you work it
-import { useEffect, useState } from 'react';
+import { createContext, useContext, useEffect, useRef, useState } from 'react';
 import type { CSSProperties } from 'react';
 import { RAMPS } from './lib/demo.ts';
 import type { RampName } from './lib/demo.ts';
@@ -33,10 +33,14 @@ const TUNE_LABELS = ['A', 'B', 'C', 'D'];
 const SEC_LABELS: Record<SectionId, string> = { classic: 'CLASSIC', copper: 'COPPER', plasma: 'PLASMA', blitter: 'BLITTER' };
 const FONT_LABELS = { ps2p: 'BLOCK', silk: 'SILK', vt: 'VT' };
 
+// every key in the bay confirms a thumb press the way the boot does
+const HapticCtx = createContext<(() => void) | null>(null);
+
 function Chip(props: {
   on: boolean; label: string; title?: string; hot: string;
   onPress: () => void; disabled?: boolean; swatch?: string[]; toggle?: boolean;
 }) {
+  const haptic = useContext(HapticCtx);
   return (
     <button
       type="button"
@@ -44,7 +48,7 @@ function Chip(props: {
       style={{ '--hot': props.hot, '--dim': props.swatch ? 'transparent' : undefined } as CSSProperties}
       title={props.title}
       disabled={props.disabled}
-      onClick={props.onPress}
+      onClick={() => { haptic?.(); props.onPress(); }}
       aria-pressed={props.toggle ? props.on : undefined}
     >
       {props.swatch && (
@@ -59,11 +63,11 @@ function Chip(props: {
   );
 }
 
-function Row(props: { label: string; children: React.ReactNode }) {
+function Row(props: { label: string; cls?: string; children: React.ReactNode }) {
   return (
     <div className="drow" role="group" aria-label={props.label}>
       <div className="dlabel" aria-hidden>{props.label}</div>
-      <div className="dkeys">{props.children}</div>
+      <div className={'dkeys' + (props.cls ? ' ' + props.cls : '')}>{props.children}</div>
     </div>
   );
 }
@@ -96,9 +100,12 @@ export default function Deck(props: {
   onRandomize: () => void;
   onReset: () => void;
   onClose: () => void;
+  onTap?: () => void;
   linkNote: string;
 }) {
   const { spec, resolved, hot, exp } = props;
+  // a thumb press confirms itself — the same thud the boot and EDIT use
+  const haptic = () => { if (navigator.maxTouchPoints > 0) props.onTap?.(); };
   const [tab, setTab] = useState<Tab>('rigs');
   const [nameDraft, setNameDraft] = useState('');
   // the greetz field edits a comma list — keep a raw draft so the comma the
@@ -106,6 +113,13 @@ export default function Deck(props: {
   // draft from spec when the field isn't the thing typing it
   const [greetzDraft, setGreetzDraft] = useState(spec.greetz.join(', '));
   const [greetzFocus, setGreetzFocus] = useState(false);
+  // the exit key takes focus after the entrance, not while it is still
+  // parked off-screen — focusing it early scrolls the page to it
+  const xRef = useRef<HTMLButtonElement>(null);
+  useEffect(() => {
+    const t = setTimeout(() => xRef.current?.focus({ preventScroll: true }), 720);
+    return () => clearTimeout(t);
+  }, []);
   // SAVE relabels once the download has actually been handed over — the
   // receipt row is where a finished artifact answers
   const [saved, setSaved] = useState(false);
@@ -123,14 +137,19 @@ export default function Deck(props: {
   // be able to close while a field has focus
   const inputKeys = (e: React.KeyboardEvent) => { if (e.key !== 'Escape') e.stopPropagation(); };
   const secs = spec.sections === 'auto' ? ['classic', 'plasma', 'blitter'] as SectionId[] : spec.sections;
+  // a lit PARTS key is a preview: first press shows you the section on the
+  // tube; pressing the one already on the glass takes it out of the cycle
+  const secPinRef = useRef<SectionId | ''>('');
   const setSec = (id: SectionId) => {
     const has = secs.includes(id);
+    if (has && secPinRef.current !== id) { secPinRef.current = id; props.onPreview(id); return; }
     if (has && secs.length === 1) return; // never an empty demo
     const next = has ? secs.filter((s) => s !== id) : [...secs, id];
     // stored canonical — the lit rig key and the played cycle always agree
     props.onPatch({ sections: SECTION_ORDER.filter((x) => next.includes(x)) });
     // pin what you just switched on; when one goes dark, fall back to the
     // scroller rather than stare at the part you removed
+    secPinRef.current = has ? '' : id;
     props.onPreview(has ? 'scroll' : id);
   };
   const sameSecs = (a: SectionId[], b: unknown) =>
@@ -145,6 +164,7 @@ export default function Deck(props: {
     exp.busy && exp.kind === kind ? `${base} ${Math.round(exp.frac * 100)}%` : base;
 
   return (
+    <HapticCtx.Provider value={haptic}>
     <div className="deck" role="dialog" aria-label="control deck" style={{ '--hot': hot } as CSSProperties}>
       <div className="deckhead">
         <span className="decktitle">CONTROL DECK</span>
@@ -168,8 +188,10 @@ export default function Deck(props: {
             </button>
           ))}
         </div>
-        {/* the deck is a dialog — opening it hands focus to its exit key */}
-        <button type="button" autoFocus className="key deckx" onClick={props.onClose} aria-label="close deck">×</button>
+        {/* the deck is a dialog — opening it hands focus to its exit key,
+            but only once the bay has landed; autoFocus during the entrance
+            fill scrolls an off-screen key into view and yanks the tube */}
+        <button type="button" ref={xRef} className="key deckx" onClick={props.onClose} aria-label="close deck">×</button>
       </div>
 
       <div className="deckbody">
@@ -178,7 +200,7 @@ export default function Deck(props: {
         <div className="dpanel" key={tab}>
         {tab === 'rigs' && (
           <>
-            <Row label="RIGS">
+            <Row label="RIGS" cls="rigkeys">
               {PRESETS.map((pr) => (
                 <Chip key={pr.id} toggle on={rigOn(pr.patch)} hot={hot} label={pr.label}
                   title="a whole style in one key" onPress={() => props.onPatch(pr.patch)} />
@@ -330,12 +352,20 @@ export default function Deck(props: {
               <Chip on={props.linkState !== 'idle'} hot={hot}
                 label={props.linkState === 'copied' ? '⧉ COPIED' : props.linkState === 'manual' ? '⧉ COPY THIS' : '⧉ LINK'}
                 onPress={props.onShareLink} />
-              <span className={'dnote' + (props.linkState === 'manual' ? ' urlline' : '')} aria-live="polite">{props.linkNote}</span>
+              {props.linkState === 'manual' ? (
+                // the clipboard refused — the URL holds as a real field that
+                // selects itself until the next press, not a note that hides
+                <input className="dinput urlline" readOnly value={props.linkNote} aria-label="share link"
+                  onFocus={(e) => e.currentTarget.select()} />
+              ) : (
+                <span className="dnote" aria-live="polite">{props.linkNote}</span>
+              )}
             </>
           )}
           {exp.error && <span className="prog err" role="alert">{exp.error}</span>}
         </div>
       </div>
     </div>
+    </HapticCtx.Provider>
   );
 }

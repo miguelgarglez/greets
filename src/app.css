@@ -142,12 +142,16 @@ body { background: #060608; overflow: hidden; font-family: 'PS2P', monospace; }
   border-radius: 10px 10px 0 0;
   box-shadow: 0 -18px 60px rgba(0,0,0,0.65), 0 0 40px color-mix(in srgb, var(--hot, #f80) 8%, transparent);
   font-family: 'PS2P', monospace;
-  /* the tube parks first, then the bay rises — during the delay the deck
-     stays below the edge (backwards fill) and never crosses the scroller */
-  animation: deckin 0.32s 0.34s cubic-bezier(0.2, 0.9, 0.25, 1) backwards;
+  /* the tube parks first, then the bay unfolds from the EDIT key's corner —
+     during the delay it sits invisible where the key was (backwards fill) */
+  animation: deckin 0.34s 0.34s cubic-bezier(0.2, 0.9, 0.25, 1) backwards;
   overflow: hidden;
 }
-@keyframes deckin { from { transform: translateY(100%); } to { transform: translateY(0); } }
+@keyframes deckin {
+  from { transform: translate(44vw, -62vh) scale(0.24); opacity: 0; }
+  40% { opacity: 1; }
+  to { transform: translate(0, 0) scale(1); opacity: 1; }
+}
 
 .deckhead {
   display: flex; align-items: center; gap: 12px;
@@ -175,7 +179,7 @@ body { background: #060608; overflow: hidden; font-family: 'PS2P', monospace; }
   animation: panelin 0.16s steps(4) backwards;
 }
 @keyframes panelin { from { transform: translateX(14px); opacity: 0; } }
-@keyframes thumbin { from { transform: scale(0.3); opacity: 0; } }
+@keyframes thumbin { from { transform: translateX(-10px); opacity: 0; } }
 
 .deckfoot {
   display: flex; align-items: center; gap: 12px;
@@ -192,12 +196,12 @@ body { background: #060608; overflow: hidden; font-family: 'PS2P', monospace; }
 .dkeys { display: flex; flex-wrap: wrap; gap: 7px; align-items: center; flex: 1; }
 /* the note is the value, the label is the caption — hierarchy by light */
 .dnote { font-size: 10px; color: #c6c6e4; align-self: center; user-select: text; }
-/* a refused clipboard earns its own row: the whole link, selectable,
-   inside the bay instead of hanging off the keys */
-.dnote.urlline {
+/* a refused clipboard earns its own row: the whole link in a field that
+   selects itself, inside the bay instead of hanging off the keys */
+.urlline {
   flex-basis: 100%;
-  border: 1px dashed #3a3a50; padding: 8px 10px; margin-top: 4px;
-  color: var(--hot, #f80); overflow-wrap: anywhere;
+  border: 1px dashed #3a3a50 !important; padding: 8px 10px; margin-top: 4px;
+  color: var(--hot, #f80); font-size: 10px;
 }
 
 .dfields { display: grid; grid-template-columns: 1fr 1fr; gap: 6px 20px; flex: 1; }
@@ -240,7 +244,9 @@ body { background: #060608; overflow: hidden; font-family: 'PS2P', monospace; }
 .key.on .swatch i { outline: 1px solid rgba(0,0,0,0.35); }
 
 .dinput {
-  font-family: 'PS2P', monospace; font-size: 10px; color: #f2f2fa;
+  /* the bay speaks in two sizes — captions at 10px, the words you're
+     actually writing one size up so the field reads as the value */
+  font-family: 'PS2P', monospace; font-size: 12px; color: #f2f2fa;
   background: transparent;
   border: 0; border-bottom: 1px dashed #4a4a60;
   padding: 8px 2px 7px; caret-color: var(--hot, #f80);
@@ -251,15 +257,23 @@ body { background: #060608; overflow: hidden; font-family: 'PS2P', monospace; }
 
 .prog { font-size: 10px; color: var(--hot, #f80); align-self: center; letter-spacing: 1px; white-space: pre; }
 
-/* a key that answers — when a chip relabels itself the new word slides in
-   instead of teleporting */
-@keyframes kswap { from { transform: translateY(5px); opacity: 0; } }
-.klabel { display: inline-block; animation: kswap 0.14s steps(3) backwards; }
+/* a key that answers — a relabel fades the new word in on the spot instead
+   of sliding a whole new label through the keycap */
+@keyframes kswap { from { opacity: 0; } }
+.klabel { display: inline-block; animation: kswap 0.16s steps(2) backwards; }
 .prog.err { color: #ff5a50; }
 .prog.done { color: #7ee08a; }
 
 @media (max-width: 720px) {
   .app .tube { transition: none; }
+  /* on a phone the tube docks to the top safe area while the bay works —
+     the leftover room belongs under the glass, not split around it, and
+     the bay still owns the bottom edge */
+  .app.editing .tube { margin-block: 0; margin-top: max(10px, env(safe-area-inset-top)); margin-bottom: 8px; }
+  .app.editing .deck { margin-top: auto; }
+  /* four rigs, four equal cells — ACID never orphans a row */
+  .rigkeys { display: grid; grid-template-columns: 1fr 1fr; }
+  .rigkeys .key { justify-content: center; }
   .deck { width: 100vw; border-radius: 0; margin-top: 8px; }
   .decktitle { display: none; }
   .dtabs { gap: 3px; }
@@ -271,7 +285,7 @@ body { background: #060608; overflow: hidden; font-family: 'PS2P', monospace; }
   .deckx { min-width: 44px; min-height: 44px; }
   .dlabel { width: 68px; font-size: 10px; padding-top: 15px; }
   .dfields { grid-template-columns: 1fr; gap: 2px; }
-  .dinput { font-size: 10px; padding: 9px 2px 8px; }
+  .dinput { font-size: 12px; padding: 9px 2px 8px; }
   .dkeys .dnote { flex-basis: 100%; }
   .fab { right: 12px; top: max(12px, calc(env(safe-area-inset-top) + 8px)); }
   .deckfoot { padding-bottom: calc(13px + env(safe-area-inset-bottom)); }

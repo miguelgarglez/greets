@@ -211,6 +211,9 @@ export class Demo {
     ];
   }
 
+  // pins raise the crawl a few pixels — glyphs flush with the raster's
+  // bottom row read as cut by the bezel, not parked on it
+  pinY: number | null = null;
   private scroller(t: number, scale = 2, yBase = H - 22, ampScale = 1, text?: string) {
     const c = this.ctx;
     const speed = 55 * this.scrollSpeed;
@@ -219,7 +222,7 @@ export class Demo {
     const gh = 8 * scale;
     // the wave never dips a glyph under the glass — the baseline rides
     // higher when the amplitude is wild
-    const yb = Math.min(yBase, H - 2 - amp - gh);
+    const yb = Math.min(this.pinY ?? yBase, H - 2 - amp - gh);
     const line = text ?? this.scrolltext;
     const adv = this.font.px * scale * 1.0;
     const total = line.length * adv + W + 40;
@@ -364,10 +367,13 @@ export class Demo {
     c.clip();
     const lineH = 22;
     const total = greetz.length * lineH;
-    const off = (t * 34) % (total + H) - lineH;
-    greetz.forEach((n, i) => {
-      const y = H - off - i * lineH;
-      if (y < -lineH || y > H + lineH) return;
+    // the roll wraps on itself — a name is always crossing the window;
+    // an empty pass under two copper rules is dead air, not a beat
+    const off = (t * 34) % total;
+    for (let j = 0; j * lineH < H + lineH + off; j++) {
+      const n = greetz[j % greetz.length];
+      const y = H - off + j * lineH;
+      if (y > H + lineH || y < -lineH) continue;
       const scale = n === 'YOU' ? 2.6 : 2;
       let x = (W - this.drawnW(n, scale)) / 2;
       for (const ch of n) {
@@ -377,7 +383,7 @@ export class Demo {
         c.drawImage(gl.cv, x, y + bounce, gl.w * scale, gl.h * scale);
         x += gl.w * scale + 2;
       }
-    });
+    }
     c.restore();
     this.copperBar(6, t * 3);
     this.copperBar(H - 30, t * 3 + 3);
@@ -463,7 +469,7 @@ export class Demo {
     c.fillStyle = '#05050a';
     c.fillRect(0, 0, W, H);
     this.starfield(t * 0.15);
-    const shown = (draft.toUpperCase() || '').slice(0, 12);
+    const shown = (draft.toUpperCase() || '').slice(0, 14);
     if (shown.length > this.lastDraftLen) { this.flashStart = t; this.flashIdx = shown.length - 1; }
     this.lastDraftLen = shown.length;
     this.tinyText(badPath ? 'NO DISK' : 'TYPE A NAME', 52, t, 2);
@@ -546,7 +552,7 @@ export class Demo {
       c.fillStyle = '#05050a';
       c.fillRect(0, 0, W, H);
       this.starfield(t * 0.15);
-      this.drawDraft(draft.toUpperCase().slice(0, 12), t);
+      this.drawDraft(draft.toUpperCase().slice(0, 14), t);
     } else {
       this.renderClassic(0, false, false);
     }
@@ -579,6 +585,8 @@ export class Demo {
     this.tinyText(line, H - 34, 0, s);
     this.tinyText('- MOTION OFF -', 112, 0);
     this.tinyText(this.muted ? 'M TO UNMUTE THE TUNE' : 'THE TUNE STILL PLAYS', 128, 0, 1);
+    // the corner badges the sound state like the live paths do
+    this.tinyText(this.muted ? 'SND OFF' : 'SND ON', 3, 0, 1);
   }
 
   // the first beat after boot: the real baked logo lands letter by letter,
@@ -598,7 +606,7 @@ export class Demo {
     // each typed letter holds its cell until its own chrome column lands on
     // that spot, then hands off — one object, never a cut
     if (draft) {
-      this.drawDraft(draft.toUpperCase().slice(0, 12), t, 1, (i) => {
+      this.drawDraft(draft.toUpperCase().slice(0, 14), t, 1, (i) => {
         const ap = 0.25 + i * 0.1;
         return u < ap ? 1 : Math.max(0, 1 - (u - ap) / 0.18);
       });
@@ -631,6 +639,9 @@ export class Demo {
     }
     // the scroller waits for the whole name, then slides in from the right
     if (u > 0.25 + nLetters * 0.1 + 0.15) this.scroller(t);
+    // the state of the sound is painted from the first running frame
+    if (this.muted) this.tinyText('SND OFF', 3, 0, 1);
+    else if (performance.now() < this.sndOnUntil) this.tinyText('SND ON', 3, 0, 1);
   }
 
   muted = false;
@@ -649,20 +660,28 @@ export class Demo {
     if (m === 'greetz') this.renderGreetzBoard(greetz);
     else if (m === 'scroll' && still) {
       // the frozen pin parks the phrase centered in the band — a fragment
-      // frozen mid-crawl is useless to the person editing it
+      // frozen mid-crawl is useless to the person editing it. shrink until
+      // it fits, and if even that fails keep the START of the line, not
+      // the middle of an overflowing run
       this.renderClassic(2, true, false);
-      const line = this.scrolltext.split('+++')[0].trim() || this.scrolltext;
+      let line = this.scrolltext.split('+++')[0].trim() || this.scrolltext;
       let s = 2;
-      while (s > 1 && this.drawnW(line, s) > W - 16) s -= 0.5;
+      while (s > 0.5 && this.drawnW(line, s) > W - 16) s -= 0.25;
+      while (line.length > 1 && this.drawnW(line, s) > W - 16) line = line.slice(0, -1);
       this.tinyText(line, H - 30, 0, s);
     }
     // the edit pin crawls slow and soft — the tube should read like the
     // field you're typing in, not pile the sentence on a steep sine
-    else if (m === 'scroll') this.renderClassic(t * 0.45, true, true, 0.55);
-    else if (m === 'classic') this.renderClassic(t);
-    else if (m === 'plasma') this.renderPlasma(t);
-    else if (m === 'copper') this.renderCopper(t);
-    else this.renderBlitter(t);
+    this.pinY = H - 30;
+    try {
+      if (m === 'scroll') this.renderClassic(t * 0.45, true, true, 0.55);
+      else if (m === 'classic') this.renderClassic(t);
+      else if (m === 'plasma') this.renderPlasma(t);
+      else if (m === 'copper') this.renderCopper(t);
+      else this.renderBlitter(t);
+    } finally {
+      this.pinY = null;
+    }
     return true;
   }
 
@@ -678,12 +697,23 @@ export class Demo {
         else if (s === 'copper') this.renderCopper(lt);
         else this.renderBlitter(lt);
       }
-      // sections never teleport: a copper-clock wipe reveals the new frame
-      this.wipe(lt / 0.45);
+      // sections never teleport: a copper-clock wipe reveals the new frame.
+      // while the tube itself is moving (deck park in or out) the shutters
+      // hold — a wipe fired through a resize is the slit, not a transition
+      if (performance.now() >= this.wipeHoldUntil) this.wipe(lt / 0.45);
     }
-    // the mute badge sits above any pin — silence must be visible
+    // the mute badge sits above any pin — silence must be visible; a fresh
+    // boot answers the same way so the state is never inferred
     if (this.muted) this.tinyText('SND OFF', 3, 0, 1);
+    else if (performance.now() < this.sndOnUntil) this.tinyText('SND ON', 3, 0, 1);
   }
+
+  // suppress the section wipe for a wall-clock window — set while CSS is
+  // still parking or releasing the tube
+  wipeHoldUntil = 0;
+  holdWipe(ms: number) { this.wipeHoldUntil = Math.max(this.wipeHoldUntil, performance.now() + ms); }
+  // the SND ON badge's lease — set as the running phase begins
+  sndOnUntil = 0;
 
   // dark shutters parting from center, edged with the ramp — one transition
   // grammar for section changes and the landing -> preboot beat

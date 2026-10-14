@@ -25,7 +25,7 @@ function pathName(): string | null {
   const s = raw.replace(/[^\p{L}\p{N} '\-_.]/gu, '').slice(0, 14).trim();
   return s || null;
 }
-const BAD_PATH = decodeURIComponent(location.pathname.replace(/^\/+/, '')).includes('/');
+const badPathNow = () => decodeURIComponent(location.pathname.replace(/^\/+/, '')).includes('/');
 
 type Phase = 'landing' | 'toboot' | 'preboot' | 'poweron' | 'running';
 // undo is a rig key: it snapshots only the style dials, never the words
@@ -65,8 +65,7 @@ export default function App() {
   const fontNowRef = useRef<PixelFont | null>(null);
   const greetzRef = useRef<string[]>(resolved.greetz);
   greetzRef.current = resolved.greetz;
-  const mutedRef = useRef(false);
-  try { mutedRef.current = localStorage.getItem('greets-muted') === '1'; } catch { /* private mode */ }
+  const mutedRef = useRef<boolean>((() => { try { return localStorage.getItem('greets-muted') === '1'; } catch { return false; } })());
   const phaseRef = useRef(phase);
   phaseRef.current = phase;
 
@@ -97,8 +96,10 @@ export default function App() {
   // navigation re-decodes it
   useEffect(() => {
     // a slashed path is the NO DISK landing, not a broken link — keep the
-    // address honest so reload shows the same error crawl
-    if (BAD_PATH) return;
+    // address honest so reload shows the same error crawl — re-read the
+    // path every run: leaving /no/disk by typing a name turns the writer
+    // back on, or the new spec could never reach the hash
+    if (badPathNow()) return;
     const h = encodeSpec(spec);
     const url = (name ? '/' + encodeURIComponent(name.toLowerCase()) : '/') + (h ? '#' + h : '');
     if (location.pathname + location.hash !== url) history.replaceState(null, '', url);
@@ -141,7 +142,7 @@ export default function App() {
         const t = (now - t0) / 1000;
         const ph = phaseRef.current;
         if (REDUCED && ph === 'running') { demo.muted = mutedRef.current; demo.previewMode = previewRef.current; demo.renderReduced(greetzRef.current); return; }
-        if (ph === 'landing') demo.renderBios(t, draftRef.current, BAD_PATH);
+        if (ph === 'landing') demo.renderBios(t, draftRef.current, badPathNow());
         else if (ph === 'toboot') {
           const u = (now - powerRef.current.started) / 350;
           // the typed name stays on the glass until the slit covers it — the
@@ -159,7 +160,7 @@ export default function App() {
         else if (ph === 'preboot') demo.renderPreboot(t, TOUCH, now - powerRef.current.pressAt < 260);
         else if (ph === 'poweron') {
           const u = (now - powerRef.current.started) / 600;
-          if (u >= 1) { powerRef.current.done = now; setPhase('running'); }
+          if (u >= 1) { powerRef.current.done = now; demo.sndOnUntil = now + 2400; setPhase('running'); }
           else demo.renderPowerOn(u, name, t);
         }
         else {
@@ -221,11 +222,15 @@ export default function App() {
   }, [audioKey]);
 
   const [muted, setMuted] = useState(mutedRef.current);
+  // the region speaks on the toggle, not on arrival — entering 'running'
+  // is not a mute change and must not announce itself as one
+  const [muteMsg, setMuteMsg] = useState('');
   const toggleMute = () => {
     const d = deckRef.current;
     if (!d) return;
     mutedRef.current = !mutedRef.current;
     setMuted(mutedRef.current);
+    setMuteMsg(mutedRef.current ? 'sound off' : 'sound on');
     d.gain.gain.value = mutedRef.current ? 0 : 0.8;
     try { localStorage.setItem('greets-muted', mutedRef.current ? '1' : '0'); } catch { /* private mode */ }
     const dm = demoRef.current;
@@ -245,11 +250,18 @@ export default function App() {
   // is one-way: a bigger bay just means a smaller tube, never the reverse
   useEffect(() => {
     const root = document.documentElement;
+    // the tube is moving for the next beat — the raster must not fire its
+    // own shutters through the resize (the wipe mid-park is the slit)
+    demoRef.current?.holdWipe(850);
     if (!deckOpen) { root.style.removeProperty('--deckh'); return; }
     const el = document.querySelector('.deck') as HTMLElement | null;
     if (!el) return;
     const ro = new ResizeObserver(() => {
-      root.style.setProperty('--deckh', `${Math.round(el.getBoundingClientRect().height)}px`);
+      // publish the content height, not the squeezed border box — during the
+      // entrance the column can overflow and flex shrinks the bay, and a
+      // squeezed (or detached, zero) frame must never retarget the tube
+      const h = Math.max(el.scrollHeight, Math.round(el.getBoundingClientRect().height));
+      if (h > 0) root.style.setProperty('--deckh', `${h}px`);
     });
     ro.observe(el);
     return () => { ro.disconnect(); root.style.removeProperty('--deckh'); };
@@ -374,6 +386,9 @@ export default function App() {
     undoRef.current = [];
     setCanUndo(false);
     cancelExport();
+    if (linkTimerRef.current) { clearTimeout(linkTimerRef.current); linkTimerRef.current = null; }
+    setLinkState('idle');
+    setLinkNote('COPIES THE LINK WITH ALL YOUR SETTINGS');
   };
   const rename = (n: string) => {
     history.pushState(null, '', '/' + encodeURIComponent(n.toLowerCase()) + location.hash);
@@ -381,8 +396,11 @@ export default function App() {
     // a new name is a new bench: no undo stack or in-flight export that
     // could publish the old picture under the new name
     clearSession();
-    // the name is the machine's label — the whole boot replays: the deck
-    // goes away with the running phase, the beam fires, the letters land
+    // the name is the machine's label — the whole boot replays on the
+    // full tube: the bay leaves first, then the beam fires and the
+    // letters land on glass that is not parked behind a rack
+    setDeckOpen(false);
+    setPreview('');
     powerRef.current.started = performance.now();
     setPhase('poweron');
     setName(n);
@@ -403,7 +421,11 @@ export default function App() {
       else saveResult();
     } catch { /* user closed the sheet */ }
   };
+  // only COPIED auto-dismisses — a refused clipboard leaves a field you
+  // have to select by hand, and a row that vanishes mid-select is a lie
+  const linkTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const shareLink = async () => {
+    if (linkTimerRef.current) { clearTimeout(linkTimerRef.current); linkTimerRef.current = null; }
     const url = location.href;
     // the clipboard path — also the answer when the share sheet is refused
     const copy = async () => {
@@ -411,14 +433,15 @@ export default function App() {
         await navigator.clipboard.writeText(url);
         setLinkState('copied');
         setLinkNote('COPIED — THE WHOLE SPEC RIDES IN IT');
+        linkTimerRef.current = setTimeout(() => {
+          linkTimerRef.current = null;
+          setLinkState('idle');
+          setLinkNote('COPIES THE LINK WITH ALL YOUR SETTINGS');
+        }, 2600);
       } catch {
         setLinkState('manual');
         setLinkNote(url);
       }
-      setTimeout(() => {
-        setLinkState('idle');
-        setLinkNote('COPIES THE LINK WITH ALL YOUR SETTINGS');
-      }, 2600);
     };
     try {
       if (navigator.share) await navigator.share({ url });
@@ -461,7 +484,7 @@ export default function App() {
         />
       )}
       {phase === 'running' && (
-        <span className="sr-only" aria-live="polite">{muted ? 'sound off' : 'sound on'}</span>
+        <span className="sr-only" aria-live="polite">{muteMsg}</span>
       )}
       {phase === 'running' && !deckOpen && (
         <button type="button" className="fab" style={{ '--hot': RAMPS[resolved.ramp][6] } as CSSProperties}
@@ -493,6 +516,7 @@ export default function App() {
             setSpec((s) => ({ ...s, ...p }));
           }}
           onClose={closeDeck}
+          onTap={() => thud(8)}
           linkNote={linkNote}
         />
       )}
