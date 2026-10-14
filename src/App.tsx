@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
+import type { CSSProperties } from 'react';
 import { Demo, RAMPS } from './lib/demo.ts';
 import type { RampName } from './lib/demo.ts';
 import { loadPixelFont } from './lib/font.ts';
@@ -20,11 +21,16 @@ const BAD_PATH = decodeURIComponent(location.pathname.replace(/^\/+/, '')).inclu
 
 type Phase = 'landing' | 'toboot' | 'preboot' | 'poweron' | 'running';
 const REDUCED = typeof matchMedia !== 'undefined' && matchMedia('(prefers-reduced-motion: reduce)').matches;
+const TOUCH = typeof navigator !== 'undefined' && navigator.maxTouchPoints > 0;
 
 export default function App() {
   const [name, setName] = useState<string | null>(pathName);
   const [phase, setPhase] = useState<Phase>(name ? 'preboot' : 'landing');
   const [draft, setDraft] = useState('');
+  const [rockerDown, setRockerDown] = useState(false);
+  const demoName = name ?? 'STRANGER';
+  const seed = hashName(demoName);
+  const ramp = pick(mulberry32(seed ^ 0xface), Object.keys(RAMPS)) as RampName;
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
   const deckRef = useRef<Deck | null>(null);
@@ -51,11 +57,7 @@ export default function App() {
     (async () => {
       const font = await loadPixelFont();
       if (stop || !canvasRef.current) return;
-      const demoName = name ?? 'STRANGER';
-      const seed = hashName(demoName);
-      const rng = mulberry32(seed ^ 0xface);
-      const ramp = pick(rng, Object.keys(RAMPS)) as RampName;
-      const demo = new Demo(canvasRef.current, { font, name: demoName, seed, ramp, scrolltext: makeScrolltext(demoName) });
+      const demo = new Demo(canvasRef.current, { font, name: demoName, seed, ramp, scrolltext: makeScrolltext(demoName, TOUCH) });
       const greetz = makeGreetz(demoName);
       const tune = generateTune(seed);
       const t0 = performance.now();
@@ -63,7 +65,7 @@ export default function App() {
         if (stop) return;
         const t = (now - t0) / 1000;
         const ph = phaseRef.current;
-        if (REDUCED && ph === 'running') { demo.renderReduced(); return; }
+        if (REDUCED && ph === 'running') { demo.muted = mutedRef.current; demo.renderReduced(); return; }
         if (ph === 'landing') demo.renderBios(t, draftRef.current, BAD_PATH);
         else if (ph === 'toboot') {
           const u = (now - powerRef.current.started) / 350;
@@ -80,7 +82,7 @@ export default function App() {
             setPhase('poweron');
           }
         }
-        else if (ph === 'preboot') demo.renderPreboot(t, navigator.maxTouchPoints > 0, now - powerRef.current.pressAt < 260);
+        else if (ph === 'preboot') demo.renderPreboot(t, TOUCH, now - powerRef.current.pressAt < 260);
         else if (ph === 'poweron') {
           const u = (now - powerRef.current.started) / 600;
           if (u >= 1) { powerRef.current.done = now; setPhase('running'); }
@@ -176,6 +178,14 @@ export default function App() {
           />
         )}
       </div>
+      {TOUCH && phase === 'preboot' && (
+        <button
+          className={'rocker' + (rockerDown ? ' down' : '')}
+          style={{ '--hot': RAMPS[ramp][6] } as CSSProperties}
+          aria-label="power on"
+          onPointerDown={() => { setRockerDown(true); setTimeout(() => setRockerDown(false), 400); }}
+        />
+      )}
     </div>
   );
 }

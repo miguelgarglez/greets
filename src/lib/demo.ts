@@ -175,8 +175,10 @@ export class Demo {
         const v = sy
           + Math.sin(x * 0.043 + t * 1.1)
           + Math.sin((x + y) * 0.03 + t * 0.7)
-          + Math.sin(Math.hypot(x - W / 2, y - H / 2) * 0.05 - t * 1.3);
-        const idx = Math.max(0, Math.min(63, Math.round((v + 4) / 8 * 63)));
+          + Math.sin(Math.hypot(x - W / 2, y - H / 2) * 0.05 - t * 1.3)
+          + Math.sin(x * 0.11 - t * 1.7) * 0.7
+          + Math.sin((x - y) * 0.09 + t * 1.5) * 0.7;
+        const idx = Math.max(0, Math.min(63, Math.round((v + 6.4) / 12.8 * 63)));
         d[i] = pal[idx] & 0xff; d[i + 1] = (pal[idx] >> 8) & 0xff; d[i + 2] = (pal[idx] >> 16) & 0xff; d[i + 3] = 255;
         i += 4;
       }
@@ -265,7 +267,7 @@ export class Demo {
     }
     const m = this.plasmaMaskCv.getContext('2d')!;
     m.globalCompositeOperation = 'source-over';
-    m.fillStyle = 'rgba(3,3,8,0.96)';
+    m.fillStyle = 'rgba(3,3,8,0.8)';
     m.fillRect(0, 0, W, H);
     m.globalCompositeOperation = 'destination-out';
     m.drawImage(this.logo.cv, (W - this.logo.w) / 2, H * 0.3 + Math.sin(t * 1.2) * 6);
@@ -415,7 +417,12 @@ export class Demo {
       return;
     }
     if (draft) {
-      this.renderBios(t, draft);
+      // the slit opens on the typed word alone — already sitting in the cells
+      // the chrome will cover, so the handoff is one continuous object
+      c.fillStyle = '#05050a';
+      c.fillRect(0, 0, W, H);
+      this.starfield(t * 0.15);
+      this.drawDraft(draft.toUpperCase().slice(0, 12), t);
     } else {
       this.renderClassic(0, false, false);
     }
@@ -431,10 +438,16 @@ export class Demo {
     }
   }
 
-  // prefers-reduced-motion: one frozen frame, honestly labelled in open pixels
+  // prefers-reduced-motion: one frozen frame, honestly labelled in open
+  // pixels — a complete parked scrolltext line, and the state of the tune
   renderReduced() {
-    this.renderClassic(2);
-    this.tinyText('- MOTION OFF -', 120, 0);
+    this.renderClassic(2, true, false);
+    const line = this.scrolltext.split('+++')[0].trim();
+    let s = 2;
+    while (s > 1 && this.drawnW(line, s) > W - 16) s -= 0.5;
+    this.tinyText(line, H - 34, 0, s);
+    this.tinyText('- MOTION OFF -', 112, 0);
+    this.tinyText(this.muted ? 'M TO UNMUTE THE TUNE' : 'THE TUNE STILL PLAYS', 128, 0, 1);
   }
 
   // the first beat after boot: the real baked logo lands letter by letter,

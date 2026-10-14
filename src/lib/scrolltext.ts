@@ -24,11 +24,11 @@ const CLOSERS = [
 ];
 const CREW = ['FAIRLIGHT', 'RAZOR 1911', 'SCOOPEX', 'SANITY', 'RED SECTOR', 'QUARTET', 'PHENOMENA', 'TRISTAR', 'THE SILENTS', 'CRIONICS'];
 
-export function makeScrolltext(name: string): string {
+export function makeScrolltext(name: string, touch = false): string {
   const rng = mulberry32(hashName(name) ^ 0x5eed);
   const parts = [
     `${pick(rng, OPENERS)} ${name.toUpperCase()} +++ `,
-    'PRESS M OR TAP TO MUTE THE TUNE +++ ',
+    touch ? 'TAP TO MUTE THE TUNE +++ ' : 'PRESS M OR TAP TO MUTE THE TUNE +++ ',
     pick(rng, BOASTS) + ' +++ ',
     `GREETINGS ALSO FLY TO ${shuffle(rng, [...CREW]).slice(0, 4).join(' - ')} +++ `,
     `SHARE THIS ONE - GREETS DEV / ${name.toUpperCase()} +++ `,
