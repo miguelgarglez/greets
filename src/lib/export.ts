@@ -58,7 +58,8 @@ function freshDemo(assets: DemoAssets): { demo: Demo; cv: HTMLCanvasElement } {
 // ---------- GIF ----------
 
 const GIF_SIZE = 600, GIF_FPS = 15, GIF_SECONDS = 4;
-const GIF_LABEL_H = GIF_SIZE - Math.round(GIF_SIZE * H / W); // 225 — the disk-label band under the demo
+const GIF_DEMO_H = Math.round(GIF_SIZE * H / W);          // 375 — the picture
+const GIF_LABEL_H = GIF_SIZE - GIF_DEMO_H - 2;            // 223 — the disk-label band under it
 
 // the square frame is a card, not a letterbox: demo picture on top, a printed
 // label band below — name in logo shading, credits small, copper rules, the
@@ -85,12 +86,11 @@ function bakeLabel(font: PixelFont, name: string, credits: string, ramp: string[
 }
 
 function compositeSquare(sctx: CanvasRenderingContext2D, src: HTMLCanvasElement, label: HTMLCanvasElement, ramp: string[]) {
-  const dh = Math.round(GIF_SIZE * H / W);
   sctx.imageSmoothingEnabled = false;
-  sctx.drawImage(src, 0, 0, GIF_SIZE, dh);
+  sctx.drawImage(src, 0, 0, GIF_SIZE, GIF_DEMO_H);
   sctx.fillStyle = ramp[4];
-  sctx.fillRect(0, dh, GIF_SIZE, 2);
-  sctx.drawImage(label, 0, dh + 2);
+  sctx.fillRect(0, GIF_DEMO_H, GIF_SIZE, 2);
+  sctx.drawImage(label, 0, GIF_DEMO_H + 2);
 }
 
 export async function exportGif(assets: DemoAssets, greetz: string[], rampName: RampName, credits: string, onProgress: Progress, signal: AbortSignal): Promise<Exported> {
@@ -116,7 +116,10 @@ export async function exportGif(assets: DemoAssets, greetz: string[], rampName: 
     const rgba = new Uint8Array(sctx.getImageData(0, 0, GIF_SIZE, GIF_SIZE).data.buffer);
     if (i === 0) palette = quantize(rgba, 160, { format: 'rgba4444' });
     frames.push(applyPalette(rgba, palette, 'rgba4444'));
-    if (i % 4 === 0) { onProgress(i / n * 0.6, 'SHOOTING FRAMES'); await nextFrame(); }
+    // yield every capture — a cancelled take has to die between frames,
+    // not after a synchronous quantize batch
+    onProgress(i / n * 0.6, 'SHOOTING FRAMES');
+    await nextFrame();
   }
   const gif = GIFEncoder();
   const total = n * 2 - 2;
@@ -125,8 +128,9 @@ export async function exportGif(assets: DemoAssets, greetz: string[], rampName: 
   for (let i = n - 2; i > 0; i--) order.push(i);
   for (let i = 0; i < order.length; i++) {
     if (signal.aborted) throw new DOMException('cancelled', 'AbortError');
-    gif.writeFrame(frames[order[i]], GIF_SIZE, GIF_SIZE, { palette, delay: Math.round(1000 / GIF_FPS) });
-    if (i % 12 === 0) { onProgress(0.6 + i / order.length * 0.4, 'WEAVING THE LOOP'); await nextFrame(); }
+    // one global palette on the first frame — later frames just index into it
+    gif.writeFrame(frames[order[i]], GIF_SIZE, GIF_SIZE, { palette: i === 0 ? palette : undefined, delay: Math.round(1000 / GIF_FPS) });
+    if (i % 6 === 0) { onProgress(0.6 + i / order.length * 0.4, 'WEAVING THE LOOP'); await nextFrame(); }
   }
   gif.finish();
   onProgress(1, 'DONE');
@@ -231,7 +235,7 @@ function pickRecorderMime(): string | null {
   return null;
 }
 
-async function exportRecorded(assets: DemoAssets, greetz: string[], rampName: RampName, pcm: Float32Array | null, onProgress: Progress, signal: AbortSignal): Promise<Exported> {
+async function exportRecorded(assets: DemoAssets, greetz: string[], rampName: RampName, pcm: Float32Array | null, audioCtx: AudioContext | null, onProgress: Progress, signal: AbortSignal): Promise<Exported> {
   const mime = pickRecorderMime();
   if (!mime) throw new Error('this browser cannot record video');
   const { demo, cv } = freshDemo(assets);
@@ -240,10 +244,12 @@ async function exportRecorded(assets: DemoAssets, greetz: string[], rampName: Ra
   out.width = VID_W; out.height = VID_H;
   const octx = out.getContext('2d')!;
   const stream = out.captureStream(VID_FPS);
-  let audioCtx: AudioContext | null = null;
   let src: AudioBufferSourceNode | null = null;
-  if (pcm) {
-    audioCtx = new AudioContext({ sampleRate: 44100 });
+  if (pcm && audioCtx) {
+    // the ctx was born in the click's activation window; wake it here —
+    // a suspended graph records silence and ships a film without its tune
+    try { await audioCtx.resume(); } catch { /* falls through to the check */ }
+    if (audioCtx.state !== 'running') { void audioCtx.close(); throw new Error('audio blocked by the browser'); }
     const dest = audioCtx.createMediaStreamDestination();
     src = audioCtx.createBufferSource();
     const buf = audioCtx.createBuffer(1, pcm.length, 44100);
@@ -291,11 +297,15 @@ async function exportRecorded(assets: DemoAssets, greetz: string[], rampName: Ra
 export async function exportVideo(assets: DemoAssets, greetz: string[], rampName: RampName, tune: Tune | null, onProgress: Progress, signal: AbortSignal): Promise<Exported> {
   const pcm = tune ? renderTune(tune, 44100) : null;
   const sliced = pcm ? pcm.subarray(0, VID_SECONDS * 44100) : null;
+  // the recorder path needs an AudioContext — build it now, synchronously
+  // inside the click's activation window, before the codec probes await
+  const audioCtx = pcm && typeof AudioContext !== 'undefined' ? new AudioContext({ sampleRate: 44100 }) : null;
   // offline mp4 only when it can hold the whole take — a requested tune that
   // can't encode to AAC falls back to the recorder, which keeps the audio
   if ((await canEncodeMp4()) && (!sliced || (await canEncodeAac()))) {
+    if (audioCtx && audioCtx.state !== 'closed') void audioCtx.close();
     return exportMp4(assets, greetz, rampName, sliced ? new Float32Array(sliced) : null, onProgress, signal);
   }
-  return exportRecorded(assets, greetz, rampName, sliced ? new Float32Array(sliced) : null, onProgress, signal);
+  return exportRecorded(assets, greetz, rampName, sliced ? new Float32Array(sliced) : null, audioCtx, onProgress, signal);
 }
 

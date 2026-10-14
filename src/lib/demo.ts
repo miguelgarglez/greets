@@ -375,6 +375,46 @@ export class Demo {
     this.copperBar(H - 30, t * 3 + 3);
   }
 
+  // the greetz pin mode: a credit board, not a roll — every name the field
+  // will produce is laid out at once so editing it shows what you edited
+  renderGreetzBoard(greetz: string[]) {
+    const c = this.ctx;
+    c.fillStyle = '#05050a';
+    c.fillRect(0, 0, W, H);
+    c.save();
+    c.beginPath();
+    c.rect(0, 36, W, 118);
+    c.clip();
+    // pack the names into rows inside the band; YOU still gets its size —
+    // shrink a step if a long roll would spill past the copper
+    let scale = 1.6, lineH = 26;
+    {
+      let rows = 1, rx = 18;
+      for (const n of greetz) {
+        const w = this.drawnW(n, n === 'YOU' ? 2.2 : scale) + 16;
+        if (rx + w > W - 14) { rows++; rx = 18; }
+        rx += w;
+      }
+      if (48 + rows * lineH > 150) { scale = 1.1; lineH = 19; }
+    }
+    let x = 18, y = 48;
+    for (const n of greetz) {
+      const s = n === 'YOU' ? 2.2 : scale;
+      const w = this.drawnW(n, s);
+      if (x + w > W - 14) { x = 18; y += lineH; }
+      for (const ch of n) {
+        const gl = this.font.get(ch);
+        if (!gl) { x += 8 * s * 0.5; continue; }
+        c.drawImage(gl.cv, x, y + (n === 'YOU' ? -4 : 0), gl.w * s, gl.h * s);
+        x += gl.w * s + 2;
+      }
+      x += 16;
+    }
+    c.restore();
+    this.copperBar(6, 1.3);
+    this.copperBar(H - 30, 4.3);
+  }
+
   private lastDraftLen = 0;
   private flashStart = -9;
   private flashIdx = -1;
@@ -508,9 +548,14 @@ export class Demo {
   }
 
   // prefers-reduced-motion: one frozen frame, honestly labelled in open
-  // pixels — a complete parked scrolltext line, and the state of the tune
-  renderReduced() {
-    this.renderClassic(2, true, false);
+  // pixels — a complete parked scrolltext line, and the state of the tune.
+  // a deck pin wins, so the still shows the thing being edited
+  renderReduced(greetz: string[] = []) {
+    if (this.previewMode === 'greetz') { this.renderGreetzBoard(greetz); }
+    else if (this.previewMode === 'plasma') this.renderPlasma(0);
+    else if (this.previewMode === 'copper') this.renderCopper(0);
+    else if (this.previewMode === 'blitter') this.renderBlitter(0);
+    else this.renderClassic(2, true, false);
     const line = this.scrolltext.split('+++')[0].trim();
     let s = 2;
     while (s > 1 && this.drawnW(line, s) > W - 16) s -= 0.5;
@@ -573,12 +618,26 @@ export class Demo {
 
   muted = false;
   // while the deck is open it can pin the tube to the part being edited —
-  // a knob you can't see move isn't a knob. '' means free rotation
-  previewMode: '' | 'scroll' | 'greetz' = '';
+  // a knob you can't see move isn't a knob. '' means free rotation; a
+  // section id pins that section; 'scroll' pins the classic scroller
+  previewMode: '' | 'scroll' | 'greetz' | SectionId = '';
+
+  // returns true when a pin owns the frame — shared by the live loop and
+  // the reduced-motion still so the pin works in both
+  private renderPinned(t: number, greetz: string[]): boolean {
+    const m = this.previewMode;
+    if (!m) return false;
+    const lt = t - Math.floor(t / 9) * 9;
+    if (m === 'greetz') this.renderGreetzBoard(greetz);
+    else if (m === 'scroll' || m === 'classic') this.renderClassic(lt);
+    else if (m === 'plasma') this.renderPlasma(lt);
+    else if (m === 'copper') this.renderCopper(lt);
+    else this.renderBlitter(lt);
+    return true;
+  }
 
   renderLoop(t: number, greetz: string[]) {
-    if (this.previewMode === 'greetz') { this.renderGreetz(t, greetz); return; }
-    if (this.previewMode === 'scroll') { this.renderClassic(t); return; }
+    if (this.renderPinned(t, greetz)) return;
     const i = Math.floor(t / 9) % (this.sections.length + 1);
     const lt = t - Math.floor(t / 9) * 9;
     if (i === this.sections.length) this.renderGreetz(lt, greetz);

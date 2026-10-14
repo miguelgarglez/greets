@@ -50,6 +50,14 @@ assert.ok(u.text.length > 0 && u.text.length <= 200, `utf8 text ${u.text.length}
 eq(u.greetz, ['MUM']);
 eq(u.credits, 'DJ');
 
+// the byte cap never cuts a greet in half — a joined list that overflows
+// drops whole names instead, so the roll and the hash carry the same list
+const big = { ...defaultSpec('x'), greetz: Array(8).fill('你'.repeat(16)) };
+const bigDec = decodeSpec('#' + encodeSpec(big), 'x');
+assert.ok(bigDec.greetz.every((n) => n === '你'.repeat(16)), `whole names only: ${JSON.stringify(bigDec.greetz)}`);
+assert.ok(bigDec.greetz.length > 0 && bigDec.greetz.length < 8, 'overflow drops trailing names');
+eq(encodeSpec(bigDec), encodeSpec(big)); // decode->encode is stable
+
 // 'auto' sections keep the legacy draw: the demo's rng serves 150 starfield
 // draws (3 calls each) before the shuffle — bare-name permalinks must not
 // change order under v2

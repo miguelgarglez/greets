@@ -4,7 +4,7 @@
 // enums, then each present string as [u8 len][utf8].
 import { RAMPS } from './demo.ts';
 import type { RampName } from './demo.ts';
-import { SECTION_ORDER, FONT_ORDER, LOGO_ORDER, WAVE_ORDER, TUNE_ORDER, defaultSpec, cleanText, cleanGreet, capBytes } from './spec.ts';
+import { SECTION_ORDER, FONT_ORDER, LOGO_ORDER, WAVE_ORDER, TUNE_ORDER, defaultSpec, cleanText, cleanGreetzList } from './spec.ts';
 import type { Spec } from './spec.ts';
 
 const RAMP_ORDER = Object.keys(RAMPS) as RampName[];
@@ -28,7 +28,7 @@ export function encodeSpec(s: Spec): string {
   if (s.logo !== 'auto') bits |= B.logo;
   if (s.tune !== 'auto') bits |= B.tune;
   const enc = new TextEncoder();
-  const texts = [cleanText(s.text), capBytes(s.greetz.map(cleanGreet).filter(Boolean).join(','), 200), cleanText(s.credits, 24)];
+  const texts = [cleanText(s.text), cleanGreetzList(s.greetz).join(','), cleanText(s.credits, 24)];
   if (texts[0]) bits |= B.text;
   if (texts[1]) bits |= B.greetz;
   if (texts[2]) bits |= B.credits;
@@ -101,7 +101,7 @@ export function decodeSpec(hash: string, name: string): Spec {
       p += len;
     }
     if (bits & B.text && texts[0] !== undefined) s.text = cleanText(texts[0]);
-    if (bits & B.greetz && texts[1] !== undefined) s.greetz = texts[1].split(',').map(cleanGreet).filter(Boolean).slice(0, 8);
+    if (bits & B.greetz && texts[1] !== undefined) s.greetz = cleanGreetzList(texts[1].split(','));
     if (bits & B.credits && texts[2] !== undefined) s.credits = cleanText(texts[2], 24);
     return s;
   } catch {

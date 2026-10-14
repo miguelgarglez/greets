@@ -49,5 +49,28 @@ console.log('back to /miguel phase preboot visible:', await p.locator('canvas.de
 await p.goBack(); // /
 await p.waitForTimeout(600);
 console.log('landing input back:', await p.locator('.nameinput').count() === 1);
+
+// 6. undo is style-only: a scrolltext typed AFTER a style change survives
+await p.goto('http://localhost:5388/miguel');
+await p.waitForSelector('.demoscreen');
+await p.keyboard.press('Space');
+await p.waitForTimeout(2600);
+await p.keyboard.press('e');
+await p.waitForSelector('.deck');
+await p.click('.tab:has-text("LOOK")');
+await p.click('button.key:has-text("ICE")');
+await p.click('.tab:has-text("WORDS")');
+await p.fill('input[aria-label="scrolltext"]', 'KEEP ME THROUGH UNDO');
+await p.click('.tab:has-text("RIGS")');
+await p.click('button.key:has-text("UNDO")');
+await p.click('.tab:has-text("WORDS")');
+console.log('words survived undo:', await p.locator('input[aria-label="scrolltext"]').inputValue() === 'KEEP ME THROUGH UNDO');
+
+// 7. blur on "ALICE, BOB" must not grow a double space, and the byte cap
+// drops whole names instead of cutting one
+await p.fill('input[aria-label="greets list"]', 'ALICE, BOB');
+await p.locator('input[aria-label="scrolltext"]').click(); // blur greetz
+await p.waitForTimeout(300);
+console.log('greetz blur clean:', await p.locator('input[aria-label="greets list"]').inputValue() === 'ALICE, BOB');
 console.log('pageerrors:', errs);
 await b.close();

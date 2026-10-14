@@ -8,7 +8,7 @@ const OUT = new URL('../docs/check/', import.meta.url).pathname;
 mkdirSync(OUT, { recursive: true });
 
 const browser = await chromium.launch();
-const page = await browser.newPage({ viewport: { width: 1280, height: 800 } });
+const page = await browser.newPage({ viewport: { width: 1440, height: 900 } });
 await page.goto(`${BASE}/miguel`);
 await page.waitForSelector('.demoscreen');
 await page.waitForTimeout(700);
@@ -48,6 +48,18 @@ await page.waitForTimeout(300);
 await page.screenshot({ path: OUT + 'd6-result.png' });
 console.log('desktop done');
 
+// desktop geometry at 1440x900: the bay must not eat the tube
+const geo = await page.evaluate(() => {
+  const tube = document.querySelector('.tube').getBoundingClientRect();
+  const deck = document.querySelector('.deck').getBoundingClientRect();
+  const tab = document.querySelector('.tab').getBoundingClientRect();
+  const deckx = document.querySelector('.deckx').getBoundingClientRect();
+  const dnote = getComputedStyle(document.querySelector('.dnote'));
+  return { tubeBottom: tube.bottom, deckTop: deck.top, tabH: tab.height, deckxH: deckx.height, dnotePx: dnote.fontSize };
+});
+console.log('desktop geo', geo);
+if (geo.deckTop <= geo.tubeBottom) throw new Error(`deck overlaps tube: ${JSON.stringify(geo)}`);
+
 // mobile
 const mob = await browser.newPage({ viewport: { width: 390, height: 844 }, hasTouch: true, isMobile: true });
 await mob.goto(`${BASE}/zapdash`);
@@ -69,7 +81,12 @@ const dims = await mob.evaluate(() => {
   const key = document.querySelector('.deckbody .key').getBoundingClientRect();
   const tube = document.querySelector('.tube').getBoundingClientRect();
   const deck = document.querySelector('.deck').getBoundingClientRect();
-  return { keyH: key.height, tubeTop: tube.top, tubeH: tube.height, deckTop: deck.top, vh: innerHeight };
+  const tab = document.querySelector('.tab').getBoundingClientRect();
+  return { keyH: key.height, tabH: tab.height, tubeTop: tube.top, tubeH: tube.height, deckTop: deck.top, gap: deck.top - tube.bottom, deckBottom: deck.bottom, vh: innerHeight };
 });
 console.log('mobile dims', dims);
+if (dims.keyH < 44 || dims.tabH < 44) throw new Error(`touch target under 44px: ${JSON.stringify(dims)}`);
+if (dims.deckTop <= dims.tubeTop + dims.tubeH - 4) throw new Error(`deck overlaps tube: ${JSON.stringify(dims)}`);
+if (dims.gap > 40) throw new Error(`dead band under tube: ${JSON.stringify(dims)}`);
+if (dims.deckBottom < dims.vh - 8) throw new Error(`deck does not reach bottom: ${JSON.stringify(dims)}`);
 await browser.close();

@@ -114,9 +114,9 @@ export function randomizeStyle(s: Spec, rng: () => number, ramps: RampName[]): S
 export interface Preset { id: string; label: string; patch: Partial<Spec> }
 export const PRESETS: Preset[] = [
   { id: '94', label: '1994', patch: { font: 'ps2p', logo: 'wave', wave: 'classic', speed: 1, sections: 'auto', ramp: 'auto' } },
-  { id: 'rage', label: 'RAGE', patch: { ramp: 'alert', sections: ['blitter', 'copper'], font: 'ps2p', logo: 'bounce', wave: 'wild', speed: 3 } },
+  { id: 'rage', label: 'RAGE', patch: { ramp: 'alert', sections: ['copper', 'blitter'], font: 'ps2p', logo: 'bounce', wave: 'wild', speed: 3 } },
   { id: 'deep', label: 'DEEP', patch: { ramp: 'ice', sections: ['plasma'], font: 'vt', logo: 'still', wave: 'calm', speed: 0 } },
-  { id: 'acid', label: 'ACID', patch: { ramp: 'jungle', sections: ['copper', 'classic'], font: 'silk', logo: 'bounce', wave: 'wild', speed: 2 } },
+  { id: 'acid', label: 'ACID', patch: { ramp: 'jungle', sections: ['classic', 'copper'], font: 'silk', logo: 'bounce', wave: 'wild', speed: 2 } },
 ];
 
 // sanitizers — the raster font covers a cracktro-era charset, anything else
@@ -135,6 +135,22 @@ export const capBytes = (s: string, max = 200): string => {
 export const cleanText = (s: string, max = 240) =>
   capBytes(s.replace(SAFE, ' ').replace(/\s+/g, ' ').slice(0, max));
 export const cleanGreet = (s: string) =>
-  capBytes(s.replace(SAFE, '').replace(/,/g, '').slice(0, 16), 64);
+  capBytes(s.replace(SAFE, '').replace(/,/g, '').trim().slice(0, 16), 64);
+// the joined greetz string travels behind a one-byte length prefix, capped
+// at 200 bytes — cap the LIST, never the joined string, so no name is ever
+// cut in half and the field, the roll, and the hash carry the same names
+export const cleanGreetzList = (list: string[], maxTotal = 200): string[] => {
+  const out: string[] = [];
+  let used = 0;
+  for (const raw of list.slice(0, 8)) {
+    const g = cleanGreet(raw);
+    if (!g) continue;
+    const bytes = enc8.encode(g).length + (out.length ? 1 : 0);
+    if (used + bytes > maxTotal) break;
+    out.push(g);
+    used += bytes;
+  }
+  return out;
+};
 export const cleanName = (s: string) =>
   s.replace(/[^\p{L}\p{N} '\-_.]/gu, '').slice(0, 14).trim();

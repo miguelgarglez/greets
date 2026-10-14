@@ -28,6 +28,8 @@ function pathName(): string | null {
 const BAD_PATH = decodeURIComponent(location.pathname.replace(/^\/+/, '')).includes('/');
 
 type Phase = 'landing' | 'toboot' | 'preboot' | 'poweron' | 'running';
+// undo is a rig key: it snapshots only the style dials, never the words
+const STYLE_KEYS = ['ramp', 'sections', 'font', 'speed', 'wave', 'logo', 'tune'] as const;
 const REDUCED = typeof matchMedia !== 'undefined' && matchMedia('(prefers-reduced-motion: reduce)').matches;
 const TOUCH = typeof navigator !== 'undefined' && navigator.maxTouchPoints > 0;
 
@@ -39,7 +41,7 @@ export default function App() {
   const [draft, setDraft] = useState('');
   const [rockerDown, setRockerDown] = useState(false);
   const [exp, setExp] = useState<ExportUi>({ busy: false, kind: null, frac: 0, label: '', result: null, error: null });
-  const [linkNote, setLinkNote] = useState('copies the link with all your settings');
+  const [linkNote, setLinkNote] = useState('COPIES THE LINK WITH ALL YOUR SETTINGS');
   const [linkState, setLinkState] = useState<'idle' | 'copied' | 'manual'>('idle');
   const [canUndo, setCanUndo] = useState(false);
   const demoName = name ?? 'STRANGER';
@@ -107,9 +109,11 @@ export default function App() {
       setSpec(decodeSpec(location.hash, n ?? ''));
       if (n !== nameRef.current) {
         // the route owns the phase: back to '/' means landing, a different
-        // name means a fresh tube that still has to be powered on
+        // name means a fresh tube that still has to be powered on — and a
+        // clean bench: no undo stack or half-printed export from the old name
         setDeckOpen(false);
         setPhase(n ? 'preboot' : 'landing');
+        clearSession();
       }
       setName(n);
     };
@@ -133,7 +137,7 @@ export default function App() {
         if (stop) return;
         const t = (now - t0) / 1000;
         const ph = phaseRef.current;
-        if (REDUCED && ph === 'running') { demo.muted = mutedRef.current; demo.renderReduced(); return; }
+        if (REDUCED && ph === 'running') { demo.muted = mutedRef.current; demo.previewMode = previewRef.current; demo.renderReduced(greetzRef.current); return; }
         if (ph === 'landing') demo.renderBios(t, draftRef.current, BAD_PATH);
         else if (ph === 'toboot') {
           const u = (now - powerRef.current.started) / 350;
@@ -158,8 +162,11 @@ export default function App() {
         else {
           const sinceBoot = (now - powerRef.current.done) / 1000;
           const lt = t - Math.floor(t / 9) * 9;
-          if (sinceBoot < 1.4) demo.renderIntro(sinceBoot, lt, name);
-          else { demo.muted = mutedRef.current; demo.previewMode = previewRef.current; demo.renderLoop(t, greetzRef.current); }
+          demo.muted = mutedRef.current; demo.previewMode = previewRef.current;
+          // a deck pin outranks the post-boot intro — the thing being edited
+          // is the thing on the glass
+          if (sinceBoot < 1.4 && !previewRef.current) demo.renderIntro(sinceBoot, lt, name);
+          else demo.renderLoop(t, greetzRef.current);
         }
         if (!(REDUCED && ph === 'running')) raf = requestAnimationFrame(frame);
       };
@@ -183,7 +190,7 @@ export default function App() {
       if (d) {
         d.configure(assetsFor(font));
         // reduced-motion mode renders on demand, not on a raf loop
-        if (REDUCED && phaseRef.current === 'running') { d.muted = mutedRef.current; d.renderReduced(); }
+        if (REDUCED && phaseRef.current === 'running') { d.muted = mutedRef.current; d.previewMode = previewRef.current; d.renderReduced(greetzRef.current); }
       }
     })();
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -217,7 +224,7 @@ export default function App() {
     d.gain.gain.value = mutedRef.current ? 0 : 0.8;
     try { localStorage.setItem('greets-muted', mutedRef.current ? '1' : '0'); } catch { /* private mode */ }
     const dm = demoRef.current;
-    if (REDUCED && dm) { dm.muted = mutedRef.current; dm.renderReduced(); }
+    if (REDUCED && dm) { dm.muted = mutedRef.current; dm.previewMode = previewRef.current; dm.renderReduced(greetzRef.current); }
   };
 
   const deckOpenRef = useRef(deckOpen);
@@ -273,14 +280,20 @@ export default function App() {
   };
 
   // style patches are undoable, word edits are not — undo is a rig key,
-  // not a per-keystroke text history
-  const undoRef = useRef<Spec[]>([]);
+  // not a per-keystroke text history. the snapshot only covers the style
+  // keys, so undoing a ramp can never eat a scrolltext typed afterwards
+  const undoRef = useRef<Partial<Spec>[]>([]);
+  const specRef = useRef(spec);
+  specRef.current = spec;
+  const pushUndo = () => {
+    const snap: Partial<Spec> = {};
+    for (const k of STYLE_KEYS) (snap as Record<string, unknown>)[k] = specRef.current[k];
+    undoRef.current.push(snap);
+    if (undoRef.current.length > 24) undoRef.current.shift();
+    setCanUndo(true);
+  };
   const patch = (p: Partial<Spec>) => {
-    if (!('text' in p || 'greetz' in p || 'credits' in p || 'name' in p)) {
-      undoRef.current.push(spec);
-      if (undoRef.current.length > 24) undoRef.current.shift();
-      setCanUndo(true);
-    }
+    if (STYLE_KEYS.some((k) => k in p)) pushUndo();
     setSpec((s) => ({ ...s, ...p }));
     thud(8);
   };
@@ -288,7 +301,7 @@ export default function App() {
     const prev = undoRef.current.pop();
     if (!prev) return;
     if (!undoRef.current.length) setCanUndo(false);
-    setSpec(prev);
+    setSpec((s) => ({ ...s, ...prev }));
     thud(8);
   };
   // the deck pins the tube to the part being edited
@@ -296,21 +309,13 @@ export default function App() {
   const setPreview = (p: Preview) => {
     previewRef.current = p;
     const d = demoRef.current;
-    if (d && REDUCED && phaseRef.current === 'running') { d.muted = mutedRef.current; d.renderReduced(); }
+    if (d && REDUCED && phaseRef.current === 'running') { d.muted = mutedRef.current; d.previewMode = previewRef.current; d.renderReduced(greetzRef.current); }
   };
-  const rename = (n: string) => {
-    history.pushState(null, '', '/' + encodeURIComponent(n.toLowerCase()) + location.hash);
-    setSpec((s) => ({ ...s, name: n }));
-    // the new name deserves its own landing — replay the letter intro
-    powerRef.current.done = performance.now();
-    setName(n);
-  };
-
   // exports are jobs — a cancelled or superseded job never gets to publish
   const jobRef = useRef(0);
   const doExport = async (kind: 'gif' | 'video') => {
     const font = fontNowRef.current;
-    if (!font || exp.busy) return;
+    if (!font || exp.busy || abortRef.current) return;
     const job = ++jobRef.current;
     const ac = new AbortController();
     abortRef.current = ac;
@@ -327,9 +332,12 @@ export default function App() {
     } catch (e) {
       if (!live()) return;
       const msg = e instanceof DOMException && e.name === 'AbortError' ? 'CANCELLED'
+        : e instanceof Error && /audio/i.test(e.message) ? 'THE BROWSER MUTED THE FILM'
         : e instanceof Error && /record|encode/i.test(e.message) ? 'THIS BROWSER CANNOT PRINT FILM'
         : 'THE PRESS JAMMED';
       setExp({ busy: false, kind: null, frac: 0, label: '', result: null, error: msg });
+    } finally {
+      if (abortRef.current === ac) abortRef.current = null;
     }
   };
   const cancelExport = () => {
@@ -337,6 +345,23 @@ export default function App() {
     abortRef.current?.abort();
     abortRef.current = null;
     setExp({ busy: false, kind: null, frac: 0, label: '', result: null, error: null });
+  };
+  // a new name (route change or rename) wipes the bench: undo, the export
+  // rail, and any job still printing
+  const clearSession = () => {
+    undoRef.current = [];
+    setCanUndo(false);
+    cancelExport();
+  };
+  const rename = (n: string) => {
+    history.pushState(null, '', '/' + encodeURIComponent(n.toLowerCase()) + location.hash);
+    setSpec((s) => ({ ...s, name: n }));
+    // a new name is a new bench: no undo stack or in-flight export that
+    // could publish the old picture under the new name
+    clearSession();
+    // the new name deserves its own landing — replay the letter intro
+    powerRef.current.done = performance.now();
+    setName(n);
   };
   const saveResult = () => {
     if (!exp.result) return;
@@ -362,14 +387,14 @@ export default function App() {
         try {
           await navigator.clipboard.writeText(url);
           setLinkState('copied');
-          setLinkNote('copied — the whole spec rides in it');
+          setLinkNote('COPIED — THE WHOLE SPEC RIDES IN IT');
         } catch {
           setLinkState('manual');
           setLinkNote(url);
         }
         setTimeout(() => {
           setLinkState('idle');
-          setLinkNote('copies the link with all your settings');
+          setLinkNote('COPIES THE LINK WITH ALL YOUR SETTINGS');
         }, 2600);
       }
     } catch { /* sheet dismissed */ }
@@ -425,8 +450,8 @@ export default function App() {
           onSave={saveResult}
           onShareFile={shareFile}
           onShareLink={shareLink}
-          onRandomize={() => { undoRef.current.push(spec); setCanUndo(true); setSpec((s) => randomizeStyle(s, mulberry32(Date.now() & 0xffffffff), Object.keys(RAMPS) as RampName[])); thud(24); }}
-          onReset={() => { undoRef.current.push(spec); setCanUndo(true); setSpec(defaultSpec(demoName)); }}
+          onRandomize={() => { pushUndo(); setSpec((s) => randomizeStyle(s, mulberry32(Date.now() & 0xffffffff), Object.keys(RAMPS) as RampName[])); thud(24); }}
+          onReset={() => { pushUndo(); setSpec(defaultSpec(demoName)); }}
           onClose={closeDeck}
           linkNote={linkNote}
         />

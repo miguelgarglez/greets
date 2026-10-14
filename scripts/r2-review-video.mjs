@@ -26,7 +26,7 @@ await p.waitForTimeout(1500);
 await p.click('button.key[title="dismiss"]');
 await p.waitForTimeout(400);
 await p.keyboard.press('Escape');       // the deck really does close
-await p.waitForTimeout(3000);
+await p.waitForTimeout(1400);           // end on the running demo, not dead air
 await p.close();
 await ctx.close();
 await b.close();

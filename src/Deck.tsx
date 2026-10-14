@@ -5,7 +5,7 @@ import { useEffect, useState } from 'react';
 import type { CSSProperties } from 'react';
 import { RAMPS } from './lib/demo.ts';
 import type { RampName } from './lib/demo.ts';
-import { SECTION_ORDER, FONT_ORDER, LOGO_ORDER, WAVE_ORDER, SPEEDS, PRESETS, cleanText, cleanGreet } from './lib/spec.ts';
+import { SECTION_ORDER, FONT_ORDER, LOGO_ORDER, WAVE_ORDER, SPEEDS, PRESETS, cleanText, cleanGreetzList } from './lib/spec.ts';
 import type { Spec, SectionId, Resolved } from './lib/spec.ts';
 import type { Exported } from './lib/export.ts';
 
@@ -18,7 +18,7 @@ export interface ExportUi {
   error: string | null;
 }
 
-export type Preview = '' | 'scroll' | 'greetz';
+export type Preview = '' | 'scroll' | 'greetz' | SectionId;
 type Tab = 'rigs' | 'words' | 'look' | 'motion' | 'tune';
 const TABS: { id: Tab; label: string }[] = [
   { id: 'rigs', label: 'RIGS' },
@@ -121,10 +121,17 @@ export default function Deck(props: {
     const has = secs.includes(id);
     if (has && secs.length === 1) return; // never an empty demo
     const next = has ? secs.filter((s) => s !== id) : [...secs, id];
-    props.onPatch({ sections: next });
+    // stored canonical — the lit rig key and the played cycle always agree
+    props.onPatch({ sections: SECTION_ORDER.filter((x) => next.includes(x)) });
+    props.onPreview(id);
   };
+  const sameSecs = (a: SectionId[], b: unknown) =>
+    Array.isArray(b) && a.length === b.length && a.every((x) => b.includes(x));
   const rigOn = (patch: Partial<Spec>) =>
-    Object.entries(patch).every(([k, v]) => String(spec[k as keyof Spec]) === String(v));
+    Object.entries(patch).every(([k, v]) =>
+      k === 'sections' && v !== 'auto' && spec.sections !== 'auto'
+        ? sameSecs(spec.sections as SectionId[], v)
+        : String(spec[k as keyof Spec]) === String(v));
   const bar = (n: number) => '▓'.repeat(Math.round(n * 8)) + '░'.repeat(8 - Math.round(n * 8));
   const exportLabel = (kind: 'gif' | 'video', base: string) =>
     exp.busy && exp.kind === kind ? `${base} ${Math.round(exp.frac * 100)}%` : base;
@@ -142,7 +149,8 @@ export default function Deck(props: {
             </button>
           ))}
         </div>
-        <button type="button" className="key deckx" onClick={props.onClose} aria-label="close deck">×</button>
+        {/* the deck is a dialog — opening it hands focus to its exit key */}
+        <button type="button" autoFocus className="key deckx" onClick={props.onClose} aria-label="close deck">×</button>
       </div>
 
       <div className="deckbody">
@@ -167,7 +175,7 @@ export default function Deck(props: {
           <div className="dfields">
             <Field cap="NAME · ↵ RENAMES">
               <input
-                className="dinput" aria-label="name"
+                className="dinput" aria-label="name" maxLength={14}
                 placeholder={resolved.name.toUpperCase()} value={nameDraft}
                 onChange={(e) => setNameDraft(e.target.value.replace(/[^\p{L}\p{N} '\-_.]/gu, '').slice(0, 14))}
                 onKeyDown={(e) => { if (e.key === 'Enter' && nameDraft.trim()) { props.onRename(nameDraft.trim()); setNameDraft(''); e.preventDefault(); return; } inputKeys(e); }}
@@ -175,7 +183,7 @@ export default function Deck(props: {
             </Field>
             <Field cap="CREDITS">
               <input
-                className="dinput" aria-label="credits"
+                className="dinput" aria-label="credits" maxLength={24}
                 placeholder="GREETS DEV" value={spec.credits}
                 onChange={(e) => props.onPatch({ credits: cleanText(e.target.value, 24) })}
                 onKeyDown={inputKeys}
@@ -183,9 +191,9 @@ export default function Deck(props: {
             </Field>
             <Field cap="SCROLLTEXT · EMPTY = AUTO" wide>
               <input
-                className="dinput" aria-label="scrolltext"
+                className="dinput" aria-label="scrolltext" maxLength={240}
                 placeholder="LEAVE EMPTY FOR THE GENERATED ONE" value={spec.text}
-                onChange={(e) => props.onPatch({ text: e.target.value })}
+                onChange={(e) => props.onPatch({ text: cleanText(e.target.value) })}
                 onKeyDown={inputKeys}
               />
             </Field>
@@ -195,7 +203,7 @@ export default function Deck(props: {
                 placeholder="WHO ELSE GETS A SHOUT" value={greetzDraft}
                 onFocus={() => setGreetzFocus(true)}
                 onBlur={() => setGreetzFocus(false)}
-                onChange={(e) => { setGreetzDraft(e.target.value); props.onPatch({ greetz: e.target.value.split(',').map(cleanGreet).filter(Boolean).slice(0, 8) }); }}
+                onChange={(e) => { setGreetzDraft(e.target.value); props.onPatch({ greetz: cleanGreetzList(e.target.value.split(',')) }); }}
                 onKeyDown={inputKeys}
               />
             </Field>
@@ -283,17 +291,16 @@ export default function Deck(props: {
                 {`greets-${resolved.name.toLowerCase()}.${exp.result.ext} · ${(exp.result.blob.size / 1048576).toFixed(1)}M`}
               </span>
               <Chip on={false} hot={hot} label="SAVE" onPress={props.onSave} />
-              {typeof navigator !== 'undefined' && 'canShare' in navigator && (
-                <Chip on={false} hot={hot} label="SHARE" onPress={props.onShareFile} />
-              )}
+              <Chip on={false} hot={hot} label="SHARE" onPress={props.onShareFile} />
               <Chip on={false} hot={hot} label="×" title="dismiss" onPress={props.onCancelExport} />
             </>
           ) : (
             <>
               <Chip on={false} hot={hot} label={exportLabel('gif', '◉ GIF')} title="600px square loop" onPress={() => props.onExport('gif')} />
               <Chip on={false} hot={hot} label={exportLabel('video', '▶ FILM')} title="720p video with the tune" onPress={() => props.onExport('video')} />
-              <Chip on={props.linkState === 'copied'} hot={hot}
-                label={props.linkState === 'copied' ? '⧉ COPIED' : '⧉ LINK'} onPress={props.onShareLink} />
+              <Chip on={props.linkState !== 'idle'} hot={hot}
+                label={props.linkState === 'copied' ? '⧉ COPIED' : props.linkState === 'manual' ? '⧉ COPY THIS' : '⧉ LINK'}
+                onPress={props.onShareLink} />
               <span className="dnote" aria-live="polite">{props.linkNote}</span>
             </>
           )}
