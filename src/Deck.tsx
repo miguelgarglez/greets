@@ -52,8 +52,9 @@ function Chip(props: {
           {props.swatch.map((c, i) => <i key={i} style={{ background: c }} />)}
         </span>
       )}
-      {/* key on the word itself: a relabel is a swap the eye can catch */}
-      <span className="klabel" key={props.label}>{props.label}</span>
+      {/* key on the word itself, minus live counters — a relabel is a swap
+          the eye can catch, but a ticking percent must not restart it */}
+      <span className="klabel" key={props.label.replace(/\s*\d+%$/, '')}>{props.label}</span>
     </button>
   );
 }
@@ -155,9 +156,12 @@ export default function Deck(props: {
               className={'key tab' + (tab === t.id ? ' on' : '')}
               onClick={() => {
                 // switching groups unpins the greetz board even if the
-                // field's blur doesn't fire under a synthetic click
+                // field's blur doesn't fire under a synthetic click — but
+                // only blur what's inside the body, or focus falls off the
+                // tab row entirely
                 setGreetzFocus(false);
-                (document.activeElement as HTMLElement | null)?.blur?.();
+                const ae = document.activeElement as HTMLElement | null;
+                if (ae?.closest?.('.deckbody')) ae.blur();
                 setTab(t.id);
               }}>
               {t.label}
@@ -169,6 +173,9 @@ export default function Deck(props: {
       </div>
 
       <div className="deckbody">
+        {/* the group is a keyed panel — switching groups slides the sheet
+            in instead of teleporting it */}
+        <div className="dpanel" key={tab}>
         {tab === 'rigs' && (
           <>
             <Row label="RIGS">
@@ -198,7 +205,7 @@ export default function Deck(props: {
                 className="dinput" aria-label="name" maxLength={14}
                 placeholder={resolved.name.toUpperCase()} value={nameDraft}
                 onChange={(e) => setNameDraft(e.target.value.replace(/[^\p{L}\p{N} '\-_.]/gu, '').slice(0, 14))}
-                onKeyDown={(e) => { if (e.key === 'Enter' && nameDraft.trim()) { props.onRename(nameDraft.trim()); setNameDraft(''); e.preventDefault(); return; } inputKeys(e); }}
+                onKeyDown={(e) => { if (e.key === 'Enter' && nameDraft.trim()) { props.onRename(nameDraft.trim()); setNameDraft(''); e.currentTarget.blur(); e.preventDefault(); return; } inputKeys(e); }}
               />
             </Field>
             <Field cap="CREDITS">
@@ -293,6 +300,7 @@ export default function Deck(props: {
             </Row>
           </>
         )}
+        </div>
       </div>
 
       <div className="deckfoot">
@@ -322,7 +330,7 @@ export default function Deck(props: {
               <Chip on={props.linkState !== 'idle'} hot={hot}
                 label={props.linkState === 'copied' ? '⧉ COPIED' : props.linkState === 'manual' ? '⧉ COPY THIS' : '⧉ LINK'}
                 onPress={props.onShareLink} />
-              <span className="dnote" aria-live="polite">{props.linkNote}</span>
+              <span className={'dnote' + (props.linkState === 'manual' ? ' urlline' : '')} aria-live="polite">{props.linkNote}</span>
             </>
           )}
           {exp.error && <span className="prog err" role="alert">{exp.error}</span>}

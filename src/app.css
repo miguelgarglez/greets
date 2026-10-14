@@ -101,11 +101,11 @@ body { background: #060608; overflow: hidden; font-family: 'PS2P', monospace; }
 .app.editing { flex-direction: column; justify-content: flex-start; }
 .app.editing .tube {
   flex: none;
-  margin-top: max(14px, calc(env(safe-area-inset-top) + 8px));
-  /* the tube takes at most ~52dvh of height — the rest is the bay's, so a
-     short window shrinks the glass gracefully instead of crushing it */
+  /* centred in the room the bay leaves it — the bay is content-sized and
+     --deckh is measured off the live deck, so the fit is exact */
+  margin-block: auto;
   min-width: 180px;
-  width: min(96vw, calc(52dvh * 1.6));
+  width: min(96vw, calc((100dvh - var(--deckh, 300px) - 48px) * 1.6));
 }
 
 .fab {
@@ -126,7 +126,9 @@ body { background: #060608; overflow: hidden; font-family: 'PS2P', monospace; }
 
 .deck {
   position: relative; z-index: 4;
-  flex: 1 1 auto;
+  /* sizes to the group inside it — no well between the last row and the
+     MAKE rail, on any viewport */
+  flex: 0 1 auto;
   min-height: 0;
   width: min(980px, 100vw);
   margin-top: 10px;
@@ -140,7 +142,9 @@ body { background: #060608; overflow: hidden; font-family: 'PS2P', monospace; }
   border-radius: 10px 10px 0 0;
   box-shadow: 0 -18px 60px rgba(0,0,0,0.65), 0 0 40px color-mix(in srgb, var(--hot, #f80) 8%, transparent);
   font-family: 'PS2P', monospace;
-  animation: deckin 0.4s cubic-bezier(0.2, 0.9, 0.25, 1);
+  /* the tube parks first, then the bay rises — during the delay the deck
+     stays below the edge (backwards fill) and never crosses the scroller */
+  animation: deckin 0.32s 0.34s cubic-bezier(0.2, 0.9, 0.25, 1) backwards;
   overflow: hidden;
 }
 @keyframes deckin { from { transform: translateY(100%); } to { transform: translateY(0); } }
@@ -160,11 +164,18 @@ body { background: #060608; overflow: hidden; font-family: 'PS2P', monospace; }
   min-height: 0;
   overflow-y: auto;
   padding: 12px 14px 10px;
-  display: flex; flex-direction: column; gap: 12px;
-  /* short groups spread across the bay instead of leaving a dead well */
-  justify-content: space-evenly;
   scrollbar-width: thin; scrollbar-color: #2c2c3a transparent;
 }
+/* the group panel — short groups spread across the body, and a keyed
+   remount slides the sheet in so groups never teleport */
+.dpanel {
+  min-height: 100%;
+  display: flex; flex-direction: column; gap: 12px;
+  justify-content: space-evenly;
+  animation: panelin 0.16s steps(4) backwards;
+}
+@keyframes panelin { from { transform: translateX(14px); opacity: 0; } }
+@keyframes thumbin { from { transform: scale(0.3); opacity: 0; } }
 
 .deckfoot {
   display: flex; align-items: center; gap: 12px;
@@ -176,16 +187,29 @@ body { background: #060608; overflow: hidden; font-family: 'PS2P', monospace; }
 .drow { display: flex; align-items: flex-start; gap: 12px; }
 .dlabel {
   width: 66px; flex: none; padding-top: 13px;
-  font-size: 10px; color: #9a9ab8; letter-spacing: 1px;
+  font-size: 10px; color: #7d7d9c; letter-spacing: 1px;
 }
 .dkeys { display: flex; flex-wrap: wrap; gap: 7px; align-items: center; flex: 1; }
-.dnote { font-size: 10px; color: #9a9ab8; align-self: center; user-select: text; }
+/* the note is the value, the label is the caption — hierarchy by light */
+.dnote { font-size: 10px; color: #c6c6e4; align-self: center; user-select: text; }
+/* a refused clipboard earns its own row: the whole link, selectable,
+   inside the bay instead of hanging off the keys */
+.dnote.urlline {
+  flex-basis: 100%;
+  border: 1px dashed #3a3a50; padding: 8px 10px; margin-top: 4px;
+  color: var(--hot, #f80); overflow-wrap: anywhere;
+}
 
 .dfields { display: grid; grid-template-columns: 1fr 1fr; gap: 6px 20px; flex: 1; }
 .field { display: flex; flex-direction: column; gap: 1px; min-width: 0; }
 .field.wide { grid-column: 1 / -1; }
 .fcap { font-size: 10px; color: #9a9ab8; letter-spacing: 1px; }
-.resthumb { height: 36px; border: 1px solid #2c2c3a; border-radius: 3px; image-rendering: pixelated; }
+.resthumb {
+  height: 36px; border: 1px solid #2c2c3a; border-radius: 3px;
+  image-rendering: pixelated;
+  /* the receipt grows out of the rail, not on top of it */
+  animation: thumbin 0.22s steps(4) backwards; transform-origin: left center;
+}
 
 .key {
   font-family: 'PS2P', monospace; font-size: 10px; letter-spacing: 0.5px;
@@ -235,12 +259,8 @@ body { background: #060608; overflow: hidden; font-family: 'PS2P', monospace; }
 .prog.done { color: #7ee08a; }
 
 @media (max-width: 720px) {
-  .app.editing { padding-top: env(safe-area-inset-top); }
   .app .tube { transition: none; }
-  /* the tube floats centred between the top edge and the deck */
-  .app.editing .tube { margin-block: auto; }
-  /* the deck sizes to its active tab — no dead well inside the bay */
-  .deck { width: 100vw; border-radius: 0; margin-top: 8px; flex: 0 1 auto; min-height: 0; }
+  .deck { width: 100vw; border-radius: 0; margin-top: 8px; }
   .decktitle { display: none; }
   .dtabs { gap: 3px; }
   .deckhead { padding: 8px 8px; gap: 5px; }
@@ -260,15 +280,13 @@ body { background: #060608; overflow: hidden; font-family: 'PS2P', monospace; }
 /* short windows (landscape phones): the bay caps itself so the tube keeps
    a real share of the glass — the body already scrolls internally */
 @media (max-height: 480px) {
-  /* content-sized, pinned to the bottom edge — the leftover air goes to
-     the tube, not a strip under the bay */
-  .deck { max-height: 46dvh; flex: 0 1 auto; margin-top: auto; }
-  .app.editing .tube { min-width: 160px; width: min(96vw, calc(42dvh * 1.6)); }
+  .deck { max-height: 46dvh; }
+  .app.editing .tube { min-width: 160px; }
 }
 
 @media (prefers-reduced-motion: reduce) {
   .deck { animation: none; }
   .app .tube { transition: none; }
   .fab::before { animation: none; }
-  .klabel { animation: none; }
+  .klabel, .dpanel, .resthumb { animation: none; }
 }

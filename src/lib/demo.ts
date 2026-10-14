@@ -337,7 +337,9 @@ export class Demo {
     }
     const m = this.plasmaMaskCv.getContext('2d')!;
     m.globalCompositeOperation = 'source-over';
-    m.fillStyle = 'rgba(46,46,64,0.6)';
+    // the veil dims the field enough that the name reads — but leaves more
+    // than half the plasma visible, so the sea behind the word keeps moving
+    m.fillStyle = 'rgba(14,14,24,0.42)';
     m.fillRect(0, 0, W, H);
     m.globalCompositeOperation = 'destination-out';
     // the window is the logo — it obeys the logo dial: held, drifting, or loose
@@ -564,8 +566,12 @@ export class Demo {
   // pixels — a complete parked scrolltext line, and the state of the tune.
   // a deck pin wins, so the still shows the thing being edited
   renderReduced(greetz: string[] = []) {
-    // a deck pin owns the whole still — no captions painted through it
-    if (this.renderPinned(2, greetz)) return;
+    // a deck pin owns the whole still — no captions painted through it,
+    // but the mute badge is still owed
+    if (this.renderPinned(2, greetz, true)) {
+      if (this.muted) this.tinyText('SND OFF', 3, 0, 1);
+      return;
+    }
     this.renderClassic(2, true, false);
     const line = this.scrolltext.split('+++')[0].trim();
     let s = 2;
@@ -635,12 +641,21 @@ export class Demo {
 
   // returns true when a pin owns the frame — shared by the live loop and
   // the reduced-motion still so the pin works in both
-  private renderPinned(t: number, greetz: string[]): boolean {
+  private renderPinned(t: number, greetz: string[], still = false): boolean {
     const m = this.previewMode;
     if (!m) return false;
     // absolute clock — a pin must not restart its crawl on the rotator's
     // 9-second boundary
     if (m === 'greetz') this.renderGreetzBoard(greetz);
+    else if (m === 'scroll' && still) {
+      // the frozen pin parks the phrase centered in the band — a fragment
+      // frozen mid-crawl is useless to the person editing it
+      this.renderClassic(2, true, false);
+      const line = this.scrolltext.split('+++')[0].trim() || this.scrolltext;
+      let s = 2;
+      while (s > 1 && this.drawnW(line, s) > W - 16) s -= 0.5;
+      this.tinyText(line, H - 30, 0, s);
+    }
     // the edit pin crawls slow and soft — the tube should read like the
     // field you're typing in, not pile the sentence on a steep sine
     else if (m === 'scroll') this.renderClassic(t * 0.45, true, true, 0.55);

@@ -96,6 +96,9 @@ export default function App() {
   // the URL is the spec — every patch rewrites the hash, every external
   // navigation re-decodes it
   useEffect(() => {
+    // a slashed path is the NO DISK landing, not a broken link — keep the
+    // address honest so reload shows the same error crawl
+    if (BAD_PATH) return;
     const h = encodeSpec(spec);
     const url = (name ? '/' + encodeURIComponent(name.toLowerCase()) : '/') + (h ? '#' + h : '');
     if (location.pathname + location.hash !== url) history.replaceState(null, '', url);
@@ -237,6 +240,21 @@ export default function App() {
     requestAnimationFrame(() => (document.querySelector('.fab') as HTMLElement | null)?.focus());
   };
 
+  // the tube sizes itself from the room above the deck — --deckh is the
+  // bay's measured height. the deck is content-sized, so the measurement
+  // is one-way: a bigger bay just means a smaller tube, never the reverse
+  useEffect(() => {
+    const root = document.documentElement;
+    if (!deckOpen) { root.style.removeProperty('--deckh'); return; }
+    const el = document.querySelector('.deck') as HTMLElement | null;
+    if (!el) return;
+    const ro = new ResizeObserver(() => {
+      root.style.setProperty('--deckh', `${Math.round(el.getBoundingClientRect().height)}px`);
+    });
+    ro.observe(el);
+    return () => { ro.disconnect(); root.style.removeProperty('--deckh'); };
+  }, [deckOpen]);
+
   useEffect(() => {
     const boot = () => {
       if (phaseRef.current === 'preboot') {
@@ -363,8 +381,10 @@ export default function App() {
     // a new name is a new bench: no undo stack or in-flight export that
     // could publish the old picture under the new name
     clearSession();
-    // the new name deserves its own landing — replay the letter intro
-    powerRef.current.done = performance.now();
+    // the name is the machine's label — the whole boot replays: the deck
+    // goes away with the running phase, the beam fires, the letters land
+    powerRef.current.started = performance.now();
+    setPhase('poweron');
     setName(n);
   };
   const saveResult = () => {
