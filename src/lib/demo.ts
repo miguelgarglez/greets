@@ -278,10 +278,12 @@ export class Demo {
     const c = this.ctx;
     c.fillStyle = '#05050a';
     c.fillRect(0, 0, W, H);
-    // the roll owns the middle band: copper parked at the margins, no scroller
+    // the roll owns the middle band: copper parked at the margins, no
+    // scroller, and the window ends a full glyph above the bar so no line
+    // is ever sliced by the copper
     c.save();
     c.beginPath();
-    c.rect(0, 34, W, H - 64);
+    c.rect(0, 36, W, 118);
     c.clip();
     const lineH = 22;
     const total = greetz.length * lineH;
@@ -310,18 +312,21 @@ export class Demo {
 
   // the typed name row — shared by the bios, the slit, and the intro fade,
   // so the word you typed and the word that waves are one continuous object
-  private drawDraft(shown: string, t: number, alpha = 1) {
+  private drawDraft(shown: string, t: number, alpha = 1, fade?: (i: number) => number) {
     const c = this.ctx;
     const w = this.drawnW(shown, 2);
     let x = (W - w) / 2;
     let i = 0;
-    c.globalAlpha = alpha;
     for (const ch of shown) {
       const gl = this.font.get(ch);
       if (!gl) { x += this.font.px * 0.5 * 2 + 2; i++; continue; }
-      const flashing = i === this.flashIdx && t - this.flashStart < 0.28;
-      if (flashing && alpha >= 1) c.drawImage(this.hotGlyph(ch, 2), x, 96);
-      else c.drawImage(gl.cv, x, 96, gl.w * 2, gl.h * 2);
+      const a = fade ? alpha * fade(i) : alpha;
+      if (a > 0) {
+        c.globalAlpha = a;
+        const flashing = i === this.flashIdx && t - this.flashStart < 0.28;
+        if (flashing && a >= 1) c.drawImage(this.hotGlyph(ch, 2), x, 96);
+        else c.drawImage(gl.cv, x, 96, gl.w * 2, gl.h * 2);
+      }
       x += gl.w * 2 + 2;
       i++;
     }
@@ -442,16 +447,23 @@ export class Demo {
     c.fillRect(0, 0, W, H);
     this.starfield(t);
     this.copper(t);
-    // the typed word dissolves into the demo it becomes — it never teleports
-    if (draft && u < 0.3) this.drawDraft(draft.toUpperCase().slice(0, 12), t, 1 - u / 0.3);
     const hot = this.solidLogo(this.ramp[6]);
     const x0 = (W - this.logo.w) / 2;
     const draws = [{ d: -0.11, a: 0.25 }, { d: -0.055, a: 0.45 }, { d: 0, a: 1 }];
     const nLetters = Math.max(...this.colLetter) + 1;
+    // each typed letter holds its cell until its own chrome column lands on
+    // that spot, then hands off — one object, never a cut
+    if (draft) {
+      this.drawDraft(draft.toUpperCase().slice(0, 12), t, 1, (i) => {
+        const ap = 0.25 + i * 0.1;
+        return u < ap ? 1 : Math.max(0, 1 - (u - ap) / 0.18);
+      });
+    }
     // chrome letters land on the typed name's own baseline, then the whole
     // word lifts into its wave — one object, not a replacement
     const cy0 = draft ? 104 - this.logo.h / 2 : H * 0.3;
-    const k = draft ? Math.min(1, Math.max(0, (u - 0.7) / 0.6)) : 1;
+    const lift = 0.25 + nLetters * 0.1 + 0.15;
+    const k = draft ? Math.min(1, Math.max(0, (u - lift) / 0.45)) : 1;
     const e = k * k * (3 - 2 * k);
     const cy = cy0 + (H * 0.3 - cy0) * e;
     for (let x = 0; x < this.logo.w; x++) {
@@ -517,10 +529,11 @@ export class Demo {
     // the logo bounces dvd-style with trail, clamped to the band between the
     // copper bars; cosine easing so the turns read as motion, not math
     const lw = this.logo.w, lh = this.logo.h;
-    // the red foot must clear the lower copper — clamp a few px above it
+    // the red foot must clear the lower copper — clamp a few px above it —
+    // and the word stays inside the glass, off the bezel
     const yTop = 42, yBot = Math.max(yTop + 8, 134 - lh);
-    const bh = yBot - yTop, bw = W - lw;
-    const bounceX = (tt: number) => bw * (0.5 - 0.5 * Math.cos(tt * 80 * Math.PI / bw));
+    const bh = yBot - yTop, bw = W - lw - 16;
+    const bounceX = (tt: number) => 8 + bw * (0.5 - 0.5 * Math.cos(tt * 80 * Math.PI / bw));
     const bounceY = (tt: number) => yTop + bh * (0.5 - 0.5 * Math.cos(tt * 55 * Math.PI / bh));
     for (const [d, a] of [[-0.09, 0.2], [-0.045, 0.4]] as const) {
       c.globalAlpha = a;

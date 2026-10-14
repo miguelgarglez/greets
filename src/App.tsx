@@ -80,7 +80,7 @@ export default function App() {
             setPhase('poweron');
           }
         }
-        else if (ph === 'preboot') demo.renderPreboot(t, navigator.maxTouchPoints > 0, now - powerRef.current.pressAt < 160);
+        else if (ph === 'preboot') demo.renderPreboot(t, navigator.maxTouchPoints > 0, now - powerRef.current.pressAt < 260);
         else if (ph === 'poweron') {
           const u = (now - powerRef.current.started) / 600;
           if (u >= 1) { powerRef.current.done = now; setPhase('running'); }
@@ -116,7 +116,7 @@ export default function App() {
     };
     const onKey = (e: KeyboardEvent) => {
       if (phaseRef.current === 'preboot') { e.preventDefault(); boot(); }
-      else if (e.key === 'm' || e.key === 'M') {
+      else if ((e.key === 'm' || e.key === 'M') && phaseRef.current === 'running') {
         const d = deckRef.current;
         if (d) {
           mutedRef.current = !mutedRef.current;
@@ -129,7 +129,7 @@ export default function App() {
       if (phaseRef.current === 'preboot') {
         // the power key shows the press for a beat before the beam fires
         powerRef.current.pressAt = performance.now();
-        setTimeout(boot, 160);
+        setTimeout(boot, 240);
       } else if (phaseRef.current === 'running') {
         const d = deckRef.current;
         if (d) {
