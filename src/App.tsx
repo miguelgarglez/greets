@@ -158,7 +158,13 @@ export default function App() {
       deckRef.current = tune ? bootAudio(tune) : null;
       if (deckRef.current) deckRef.current.gain.gain.value = mutedRef.current ? 0 : 0.8;
     })();
-    return () => { stop = true; alive = false; cancelAnimationFrame(raf); demoRef.current = null; deckRef.current?.stop(); deckRef.current?.ctx.close(); };
+    return () => {
+      stop = true; alive = false; cancelAnimationFrame(raf); demoRef.current = null;
+      const d = deckRef.current;
+      deckRef.current = null;
+      d?.stop();
+      if (d && d.ctx.state !== 'closed') d.ctx.close();
+    };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [name]);
 
@@ -186,8 +192,9 @@ export default function App() {
     if (tuneSeedRef.current === resolved.tuneSeed) return;
     tuneSeedRef.current = resolved.tuneSeed;
     const wasPlaying = phaseRef.current === 'running' || phaseRef.current === 'poweron';
-    deckRef.current?.stop();
-    deckRef.current?.ctx.close();
+    const old = deckRef.current;
+    old?.stop();
+    if (old && old.ctx.state !== 'closed') old.ctx.close();
     deckRef.current = resolved.tune === 'off' ? null : bootAudio(generateTune(resolved.tuneSeed));
     if (deckRef.current) {
       deckRef.current.gain.gain.value = mutedRef.current ? 0 : 0.8;
@@ -296,7 +303,11 @@ export default function App() {
     const url = location.href;
     try {
       if (navigator.share) await navigator.share({ url });
-      else { await navigator.clipboard.writeText(url); setLinkNote('copied'); setTimeout(() => setLinkNote('copies the link with all your settings'), 1600); }
+      else {
+        try { await navigator.clipboard.writeText(url); setLinkNote('copied'); }
+        catch { setLinkNote(url); }
+        setTimeout(() => setLinkNote('copies the link with all your settings'), 2400);
+      }
     } catch { /* sheet dismissed */ }
   };
 
