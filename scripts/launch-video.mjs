@@ -22,7 +22,7 @@ await p.click('button.key:has-text("RAGE")');
 await p.waitForTimeout(2200);
 await p.click('.tab:has-text("WORDS")');
 await p.waitForTimeout(400);
-await p.click('input[aria-label="scrolltext"]');
+await p.click('[aria-label="scrolltext"]');
 await p.keyboard.type('ROUND TWO +++ MAKE IT YOURS +++', { delay: 45 });
 await p.waitForTimeout(2600); // the pinned scroller shows the new line
 

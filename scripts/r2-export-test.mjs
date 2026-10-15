@@ -18,7 +18,7 @@ await p.click('button.key:has-text("BOUNCE")');
 await p.waitForTimeout(400);
 console.log('URL after patches:', p.url());
 // custom scrolltext
-await p.fill('input[aria-label="scrolltext"]', 'HAPPY LAUNCH DAY MIGUEL +++ THE FUTURE IS RASTER');
+await p.fill('[aria-label="scrolltext"]', 'HAPPY LAUNCH DAY MIGUEL +++ THE FUTURE IS RASTER');
 await p.waitForTimeout(400);
 // export a GIF
 const dl = p.waitForEvent('download', { timeout: 120000 });

@@ -21,6 +21,9 @@ body { background: #060608; overflow: hidden; font-family: 'PS2P', monospace; }
   box-shadow: 0 0 80px rgba(80, 120, 255, 0.10), 0 30px 90px rgba(0,0,0,0.8);
 }
 .demoscreen { width: 100%; height: 100%; display: block; image-rendering: pixelated; background: #05050a; }
+/* while the deck is open the glass takes grabs — a press seats the field
+   caret, a drag scrubs the crawl; the page must not steal the gesture */
+.app.editing .demoscreen { touch-action: none; }
 
 .sr-only {
   position: absolute; width: 1px; height: 1px; overflow: hidden;
@@ -183,6 +186,14 @@ body { background: #060608; overflow: hidden; font-family: 'PS2P', monospace; }
 }
 @keyframes panelin { from { transform: translateX(14px); opacity: 0; } }
 @keyframes thumbin { from { transform: translateX(-10px); opacity: 0; } }
+/* the word fields cascade in on open rather than landing as one slab */
+.dfields .field { animation: panelin 0.16s steps(4) backwards; }
+.dfields .field:nth-child(2) { animation-delay: 40ms; }
+.dfields .field:nth-child(3) { animation-delay: 80ms; }
+.dfields .field:nth-child(4) { animation-delay: 120ms; }
+/* the scrolltext field wraps — the head of a long sentence stays on
+   screen on a phone instead of sliding out of the single line */
+.dtext { resize: none; line-height: 1.4; overflow-y: auto; }
 
 .deckfoot {
   display: flex; align-items: center; gap: 12px;
@@ -234,8 +245,13 @@ body { background: #060608; overflow: hidden; font-family: 'PS2P', monospace; }
   cursor: pointer; touch-action: manipulation;
   -webkit-tap-highlight-color: transparent;
   display: inline-flex; align-items: center; gap: 7px;
+  position: relative; overflow: hidden;
   transition: transform 0.05s, box-shadow 0.05s, border-color 0.15s, color 0.15s, background 0.15s;
 }
+/* the busy key keeps its label — progress rides as a meter along the
+   key's lower edge, demoscene-style */
+.keymeter { position: absolute; left: 5px; right: 5px; bottom: 4px; height: 3px; background: rgba(0,0,0,0.65); }
+.keymeter i { display: block; height: 100%; background: var(--hot, #f80); transform-origin: left; }
 .key:hover { border-color: var(--hot, #f80); color: #ececf4; }
 .key:active { transform: translateY(3px); box-shadow: 0 0 0 #000, inset 0 2px 6px rgba(0,0,0,0.6); }
 .key:focus-visible, .fab:focus-visible, .dinput:focus-visible {

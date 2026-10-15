@@ -17,9 +17,24 @@ await p.click('button.key:has-text("RAGE")');
 await p.waitForTimeout(1600);
 await p.click('.tab:has-text("WORDS")');
 await p.waitForTimeout(400);
-await p.click('input[aria-label="scrolltext"]');
+await p.click('[aria-label="scrolltext"]');
 await p.keyboard.type('ROUND TWO +++ MAKE IT YOURS +++', { delay: 45 });
-await p.waitForTimeout(2600);
+await p.waitForTimeout(1200);
+// a press on the parked line seats the field's caret on the glass
+const box = await p.locator('canvas.demoscreen').boundingBox();
+await p.mouse.click(box.x + box.width * 0.42, box.y + box.height * 0.86);
+await p.waitForTimeout(500);
+await p.keyboard.type(' OK', { delay: 60 });
+await p.waitForTimeout(900);
+// blur resumes the crawl — then a hand drags it back and bends the wave
+await p.click('.tab:has-text("WORDS")');
+await p.waitForTimeout(800);
+await p.mouse.move(box.x + box.width * 0.5, box.y + box.height * 0.9);
+await p.mouse.down();
+await p.mouse.move(box.x + box.width * 0.85, box.y + box.height * 0.9, { steps: 10 });
+await p.mouse.move(box.x + box.width * 0.3, box.y + box.height * 0.82, { steps: 10 });
+await p.mouse.up();
+await p.waitForTimeout(800);
 await p.click('button.key:has-text("◉ GIF")');
 await p.waitForSelector('.resthumb', { timeout: 60000 });
 await p.waitForTimeout(1500);

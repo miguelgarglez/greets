@@ -37,7 +37,7 @@ for (const [path, tag, vp, touch] of [
     await p.waitForSelector('.deck');
     await p.click('button.key:has-text("ACID")');
     await p.click('.tab:has-text("WORDS")');
-    await p.fill('input[aria-label="scrolltext"]', 'BUILT IN THE BROWSER +++ SHIPPED AS A GIF +++');
+    await p.fill('[aria-label="scrolltext"]', 'BUILT IN THE BROWSER +++ SHIPPED AS A GIF +++');
     // stay on WORDS — the pinned scroller proves the text reached the demo
     await p.waitForTimeout(3200);
   }

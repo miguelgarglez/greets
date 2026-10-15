@@ -532,7 +532,56 @@ export default function App() {
     <div className={'app' + (deckOpen ? ' editing' : '')}>
       <div className="room" />
       <div className="tube">
-        <canvas ref={canvasRef} className="demoscreen" aria-label={`cracktro greeting ${name ?? ''}${muted ? ', muted' : ''}`} />
+        <canvas ref={canvasRef} className="demoscreen" aria-label={`cracktro greeting ${name ?? ''}${muted ? ', muted' : ''}`}
+          onPointerDown={(e) => {
+            // with the deck open the glass is a surface you can grab —
+            // a press on the parked line seats the field's caret there;
+            // a drag on the pinned crawl walks the sentence by hand
+            const d = demoRef.current;
+            const m = previewRef.current;
+            if (!d || (m !== 'scrollhold' && m !== 'scroll')) return;
+            // keep the field's focus — a canvas press must not blur it
+            e.preventDefault();
+            const cv = e.currentTarget;
+            cv.setPointerCapture(e.pointerId);
+            const toCv = (x: number, y: number): [number, number] => {
+              const r = cv.getBoundingClientRect();
+              return [(x - r.left) * 320 / r.width, (y - r.top) * 200 / r.height];
+            };
+            if (m === 'scrollhold') {
+              const el = document.querySelector<HTMLTextAreaElement>('textarea[aria-label="scrolltext"]');
+              if (!el) return;
+              const seat = (x: number, y: number) => {
+                const [px, py] = toCv(x, y);
+                const i = Math.min(d.caretAt(px, py), el.value.length);
+                el.setSelectionRange(i, i);
+                d.pinCaret = i;
+              };
+              seat(e.clientX, e.clientY);
+              el.focus();
+              const move = (ev: PointerEvent) => seat(ev.clientX, ev.clientY);
+              const up = () => { cv.removeEventListener('pointermove', move); cv.removeEventListener('pointerup', up); };
+              cv.addEventListener('pointermove', move);
+              cv.addEventListener('pointerup', up);
+            } else {
+              // scrubs only where the crawl lives — a grab elsewhere is a
+              // plain touch on the tube
+              const [, py] = toCv(e.clientX, e.clientY);
+              if (py < 158) return;
+              let lastX = e.clientX, lastY = e.clientY;
+              const move = (ev: PointerEvent) => {
+                const k = 320 / cv.getBoundingClientRect().width;
+                d.scrub((ev.clientX - lastX) * k);
+                // vertical drag bends the wave while the grab is held —
+                // up is wilder, down is flatter, release snaps back to 1
+                d.bend((ev.clientY - lastY) * (200 / cv.getBoundingClientRect().height));
+                lastX = ev.clientX; lastY = ev.clientY;
+              };
+              const up = () => { d.pinBend = 1; cv.removeEventListener('pointermove', move); cv.removeEventListener('pointerup', up); };
+              cv.addEventListener('pointermove', move);
+              cv.addEventListener('pointerup', up);
+            }
+          }} />
         <div className="crt" aria-hidden>
           <div className="crt-lines" />
           <div className="crt-glow" />
@@ -602,6 +651,12 @@ export default function App() {
           }}
           onClose={closeDeck}
           onTap={() => thud(8)}
+          onCaret={(i) => {
+            const d = demoRef.current;
+            if (!d) return;
+            d.pinCaret = i;
+            if (REDUCED && phaseRef.current === 'running') d.renderReduced(greetzRef.current);
+          }}
           linkNote={linkNote}
         />
       )}

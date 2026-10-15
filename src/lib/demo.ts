@@ -246,7 +246,9 @@ export class Demo {
     const c = this.ctx;
     const speed = 55 * this.scrollSpeed;
     const [amp0, sf, tf] = this.wave;
-    const amp = amp0 * ampScale;
+    // a vertical grab on the pinned crawl bends the wave while it's held;
+    // the trough clamp still owns the excursion, bend or no bend
+    const amp = amp0 * ampScale * (this.pinY != null ? this.pinBend : 1);
     const gh = 8 * scale;
     // the wave never dips a glyph under the glass AND never lifts one into
     // the copper — the trough is a reserved band, so the whole excursion
@@ -257,7 +259,9 @@ export class Demo {
     const line = text ?? this.scrolltext;
     const adv = this.font.px * scale * 1.0;
     const total = line.length * adv + W + 40;
-    const off = (t * speed) % total;
+    // normalize — a scrubbed pin can run scrollT negative, and % keeps the
+    // sign in JS; the crawl is a ring, so wrap instead of going blank
+    const off = ((t * speed) % total + total) % total;
     let x = W - off;
     for (let i = 0; i < line.length; i++) {
       const g = this.font.get(line[i]);
@@ -704,6 +708,73 @@ export class Demo {
   // section id pins that section; 'scroll' pins the classic scroller
   previewMode: '' | 'scroll' | 'scrollhold' | 'greetz' | SectionId = '';
 
+  // the field's caret index, echoed on the glass while the scroll field is
+  // parked — set by the input's selection events; -1 hides it
+  pinCaret = -1;
+
+  // the parked line's layout — one fitted line if it holds, else rows
+  // wrapped at the gaps. each row carries its char span back into the
+  // field value so a press or the caret can land on a glyph. shared by
+  // the renderer and the pointer — the glass can't lie about where a
+  // character sits
+  private parkedRows(): { rows: { t: string; s: number; e: number; y: number }[]; scale: number } {
+    const line = this.scrolltext.trim();
+    const maxW = W - 16;
+    let s = 2;
+    while (s > 1 && this.drawnW(line, s) > maxW) s -= 0.25;
+    if (this.drawnW(line, s) <= maxW) return { rows: [{ t: line, s: 0, e: line.length, y: H - 30 }], scale: s };
+    const spans: [number, string][] = [];
+    let pos = 0;
+    for (const wd of line.split(' ')) { spans.push([pos, wd]); pos += wd.length + 1; }
+    const rows: { t: string; s: number; e: number }[] = [];
+    let cur = '', cs = 0;
+    for (const [wp, wd] of spans) {
+      const cand = cur ? cur + ' ' + wd : wd;
+      if (this.drawnW(cand, 1) <= maxW) { cur = cand; continue; }
+      if (cur) rows.push({ t: cur, s: cs, e: wp });
+      cur = wd; cs = wp;
+      // a single word wider than the tube hard-wraps mid-word
+      while (cur.length > 1 && this.drawnW(cur, 1) > maxW) {
+        let k = cur.length - 1;
+        while (k > 1 && this.drawnW(cur.slice(0, k), 1) > maxW) k--;
+        rows.push({ t: cur.slice(0, k), s: cs, e: cs + k });
+        cur = cur.slice(k); cs += k;
+      }
+    }
+    if (cur) rows.push({ t: cur, s: cs, e: cs + cur.length });
+    const last = rows.length - 1;
+    return { rows: rows.map((r, i) => ({ ...r, y: 186 - (last - i) * 11 })), scale: 1 };
+  }
+
+  // a press on the parked line is a press on the field — answers the
+  // caret index under the point, so the app can seat it in the input
+  caretAt(px: number, py: number): number {
+    const { rows, scale } = this.parkedRows();
+    if (!rows.length) return 0;
+    let row = rows[0];
+    for (const r of rows) if (Math.abs(py - (r.y + 4 * scale)) < Math.abs(py - (row.y + 4 * scale))) row = r;
+    const x0 = (W - this.drawnW(row.t, scale)) / 2;
+    let acc = x0, i = 0;
+    while (i < row.t.length) {
+      const w = ((this.font.get(row.t[i])?.w ?? this.font.px * 0.5) + 1) * scale;
+      if (px < acc + w / 2) break;
+      acc += w; i++;
+    }
+    return row.s + i;
+  }
+
+  // a drag on the pinned crawl walks the sentence under the finger —
+  // positive px drags the text right, against its natural march; the
+  // vertical axis bends the wave's amplitude while the grab is held
+  pinBend = 1;
+  scrub(px: number) {
+    if (this.scrollSpeed <= 0) return;
+    this.pinT0 += px / (0.45 * 55 * this.scrollSpeed);
+  }
+  bend(dy: number) {
+    this.pinBend = Math.min(2.4, Math.max(0.15, this.pinBend - dy / 26));
+  }
+
   // returns true when a pin owns the frame — shared by the live loop and
   // the reduced-motion still so the pin works in both
   private renderPinned(t: number, greetz: string[], still = false): boolean {
@@ -715,45 +786,28 @@ export class Demo {
     // a focused scroll field parks the whole phrase fitted in the band —
     // the line answers the keys as you type; the crawl resumes on blur
     if (m === 'scrollhold' || (m === 'scroll' && still)) {
-      // the frozen pin parks the phrase in the band — a fragment frozen
-      // mid-crawl is useless to the person editing it. one line at a
-      // comfortable scale first; past that the sentence wraps at its gaps
-      // into rows stacked up from the trough — a credits block, not a
-      // hairline. every glyph the field holds stays on the glass
       this.renderClassic(2, true, false);
-      const line = this.scrolltext.trim();
-      const maxW = W - 16;
-      let s = 2;
-      while (s > 1 && this.drawnW(line, s) > maxW) s -= 0.25;
-      if (this.drawnW(line, s) <= maxW) this.tinyText(line, H - 30, 0, s);
-      else {
-        const rows: string[] = [];
-        let cur = '';
-        for (const wd of line.split(' ')) {
-          const cand = cur ? cur + ' ' + wd : wd;
-          if (this.drawnW(cand, 1) <= maxW) { cur = cand; continue; }
-          if (cur) rows.push(cur);
-          cur = wd;
-          // a single word wider than the tube hard-wraps mid-word
-          while (cur.length > 1 && this.drawnW(cur, 1) > maxW) {
-            let k = cur.length - 1;
-            while (k > 1 && this.drawnW(cur.slice(0, k), 1) > maxW) k--;
-            rows.push(cur.slice(0, k));
-            cur = cur.slice(k);
-          }
-        }
-        if (cur) rows.push(cur);
-        const last = rows.length - 1;
-        // the block sits inside the text band; a stack taller than the
-        // band grows its own plate upward over the copper rather than
-        // climbing through the bar
-        const firstTop = 186 - last * 11;
-        if (firstTop - 4 < 162) {
+      const { rows, scale } = this.parkedRows();
+      // a stack taller than the trough grows its own plate upward over the
+      // copper rather than letting a row climb through the bar
+      if (rows.length > 1 && rows[0].y - 4 < 162) {
+        const c = this.ctx;
+        c.fillStyle = '#05050a';
+        c.fillRect(0, rows[0].y - 4, W, H - (rows[0].y - 4));
+      }
+      for (const r of rows) this.tinyText(r.t, r.y, 0, scale);
+      // the glass IS the field while it's parked — the caret blinks at the
+      // index the input carries, so the line under your eyes and the line
+      // under your hands are the same object
+      if (this.pinCaret >= 0 && Math.floor(performance.now() / 480) % 2 === 0) {
+        const ci = Math.min(this.pinCaret, this.scrolltext.trim().length);
+        const row = rows.find((r) => ci <= r.e) ?? rows[rows.length - 1];
+        if (row) {
+          const rx = (W - this.drawnW(row.t, scale)) / 2 + this.drawnW(row.t.slice(0, Math.max(0, ci - row.s)), scale);
           const c = this.ctx;
-          c.fillStyle = '#05050a';
-          c.fillRect(0, firstTop - 4, W, H - (firstTop - 4));
+          c.fillStyle = this.ramp[6];
+          c.fillRect(Math.round(rx), row.y - 2, 2, 8 * scale + 4);
         }
-        rows.forEach((r, i) => this.tinyText(r, 186 - (last - i) * 11, 0, 1));
       }
       if (m === 'scrollhold') this.pinHold = true;
       return true;

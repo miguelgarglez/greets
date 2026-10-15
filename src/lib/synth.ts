@@ -69,8 +69,9 @@ export function renderTune(tune: Tune, sampleRate = 44100): Float32Array {
           }
           mix += v * a.vol * CH_GAIN[c];
         }
-        // soft clip
-        out[rowStart + s] += Math.tanh(mix * 1.4);
+        // soft clip — tanh is the crunch, but it asymptotes at 0 dBFS,
+        // which reads as clipping on a hot mix; keep the ceiling clean
+        out[rowStart + s] += Math.tanh(mix * 1.4) * 0.82;
       }
     }
   }

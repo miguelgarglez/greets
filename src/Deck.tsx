@@ -39,6 +39,7 @@ const HapticCtx = createContext<(() => void) | null>(null);
 function Chip(props: {
   on: boolean; label: string; title?: string; hot: string;
   onPress: () => void; disabled?: boolean; swatch?: string[]; toggle?: boolean;
+  frac?: number;
 }) {
   const haptic = useContext(HapticCtx);
   return (
@@ -59,6 +60,11 @@ function Chip(props: {
       {/* key on the word itself, minus live counters — a relabel is a swap
           the eye can catch, but a ticking percent must not restart it */}
       <span className="klabel" key={props.label.replace(/\s*\d+%$/, '')}>{props.label}</span>
+      {/* a busy key keeps its name — the work shows as a meter inside the
+          key, not a relabel */}
+      {props.frac != null && (
+        <span className="keymeter" aria-hidden><i style={{ transform: `scaleX(${props.frac})` }} /></span>
+      )}
     </button>
   );
 }
@@ -101,6 +107,7 @@ export default function Deck(props: {
   onReset: () => void;
   onClose: () => void;
   onTap?: () => void;
+  onCaret?: (i: number) => void;
   linkNote: string;
 }) {
   const { spec, resolved, hot, exp } = props;
@@ -183,8 +190,6 @@ export default function Deck(props: {
         ? sameSecs(spec.sections as SectionId[], v)
         : String(spec[k as keyof Spec]) === String(v));
   const bar = (n: number) => '▓'.repeat(Math.round(n * 8)) + '░'.repeat(8 - Math.round(n * 8));
-  const exportLabel = (kind: 'gif' | 'video', base: string) =>
-    exp.busy && exp.kind === kind ? `${base} ${Math.round(exp.frac * 100)}%` : base;
 
   return (
     <HapticCtx.Provider value={haptic}>
@@ -270,16 +275,19 @@ export default function Deck(props: {
               />
             </Field>
             <Field cap="SCROLLTEXT · EMPTY = AUTO" wide>
-              {/* blurred, the field shows the head of the sentence — the
-                  caret only owns the tail while you're actually typing;
-                  while focused, the glass echoes the whole fitted line */}
-              <input
-                className="dinput" aria-label="scrolltext" maxLength={200}
-                placeholder="EMPTY = GENERATED" value={spec.text}
-                onFocus={() => setScrollFocus(true)}
-                onBlur={(e) => { setScrollFocus(false); e.currentTarget.scrollLeft = 0; }}
-                onChange={(e) => props.onPatch({ text: cleanText(e.target.value) })}
-                onKeyDown={inputKeys}
+              {/* the field wraps to two rows so the head of the sentence
+                  stays in reach on a phone — a clipped single line hides
+                  the half you're not typing on. while focused the glass
+                  echoes it all anyway; the caret blinks in the trough at
+                  the same index the field carries */}
+              <textarea
+                className="dinput dtext" aria-label="scrolltext" maxLength={200}
+                rows={2} placeholder="EMPTY = GENERATED" value={spec.text}
+                onFocus={(e) => { setScrollFocus(true); props.onCaret?.(e.currentTarget.selectionStart); }}
+                onBlur={(e) => { setScrollFocus(false); props.onCaret?.(-1); e.currentTarget.scrollTo({ top: 0, behavior: 'smooth' }); }}
+                onChange={(e) => { props.onPatch({ text: cleanText(e.target.value) }); props.onCaret?.(e.currentTarget.selectionStart); }}
+                onSelect={(e) => props.onCaret?.(e.currentTarget.selectionStart)}
+                onKeyDown={(e) => { if (e.key === 'Enter') e.preventDefault(); inputKeys(e); }}
               />
             </Field>
             <Field cap="GREETZ · COMMA LIST" wide>
@@ -365,7 +373,7 @@ export default function Deck(props: {
         <div className="dkeys">
           {exp.busy ? (
             <>
-              <Chip on={false} hot={hot} disabled onPress={() => {}} label={exportLabel(exp.kind ?? 'gif', exp.kind === 'video' ? '▶ FILM' : '◉ GIF')} />
+              <Chip on={false} hot={hot} disabled onPress={() => {}} frac={exp.frac} label={exp.kind === 'video' ? '▶ FILM' : '◉ GIF'} />
               <span className="prog" aria-live="polite">{bar(exp.frac)} <span className="klabel" key={exp.label}>{exp.label}</span></span>
               <Chip on={false} hot={hot} label="CANCEL" onPress={props.onCancelExport} />
             </>
@@ -382,8 +390,8 @@ export default function Deck(props: {
             </>
           ) : (
             <>
-              <Chip on={false} hot={hot} label={exportLabel('gif', '◉ GIF')} title="600px square loop" onPress={() => props.onExport('gif')} />
-              <Chip on={false} hot={hot} label={exportLabel('video', '▶ FILM')} title="720p video with the tune" onPress={() => props.onExport('video')} />
+              <Chip on={false} hot={hot} label="◉ GIF" title="600px square loop" onPress={() => props.onExport('gif')} />
+              <Chip on={false} hot={hot} label="▶ FILM" title="720p video with the tune" onPress={() => props.onExport('video')} />
               <Chip on={props.linkState !== 'idle'} hot={hot}
                 label={props.linkState === 'copied' ? '⧉ COPIED' : props.linkState === 'manual' ? '⧉ COPY THIS' : '⧉ LINK'}
                 onPress={props.onShareLink} />

@@ -9,7 +9,7 @@ const p = await b.newPage({ viewport: { width: 1440, height: 900 } });
 p.on('pageerror', (e) => console.log('PAGEERR', e.message));
 p.on('console', (m) => { if (m.type() === 'error') console.log('CON', m.text().slice(0, 160)); });
 
-const fill = (label, val) => p.fill(`input[aria-label="${label}"]`, val);
+const fill = (label, val) => p.fill(`[aria-label="${label}"]`, val);
 const boot = async (name) => { await p.goto(`${BASE}/${name}`); await p.waitForTimeout(800); await p.keyboard.press(' '); await p.waitForTimeout(2600); };
 const deck = async () => { await p.keyboard.press('e'); await p.waitForTimeout(500); };
 const tab = async (t) => { await p.click(`.tab:has-text("${t}")`); await p.waitForTimeout(300); };
