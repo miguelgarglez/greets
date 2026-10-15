@@ -53,7 +53,8 @@ export default function App() {
   ), [spec, demoName, seed]);
   const scrolltext = useMemo(() => {
     const t = cleanText(spec.text).toUpperCase();
-    return t ? t + '  +++  ' : makeScrolltext(demoName, TOUCH, resolved.credits);
+    // a line already ending in plus-marks doesn't get a second tail
+    return t ? (/\+[\s+]*$/.test(t) ? t : t + '  +++  ') : makeScrolltext(demoName, TOUCH, resolved.credits);
   }, [spec.text, demoName, resolved.credits]);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);

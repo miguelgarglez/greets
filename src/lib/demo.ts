@@ -697,18 +697,38 @@ export class Demo {
     // a focused scroll field parks the whole phrase fitted in the band —
     // the line answers the keys as you type; the crawl resumes on blur
     if (m === 'scrollhold' || (m === 'scroll' && still)) {
-      // the frozen pin parks the phrase centered in the band — a fragment
-      // frozen mid-crawl is useless to the person editing it. shrink until
-      // it fits, and if even that fails keep the START of the line, not
-      // the middle of an overflowing run
+      // the frozen pin parks the phrase in the band — a fragment frozen
+      // mid-crawl is useless to the person editing it. one line at a
+      // comfortable scale first; past that the sentence wraps at its gaps
+      // into rows stacked up from the trough — a credits block, not a
+      // hairline. every glyph the field holds stays on the glass
       this.renderClassic(2, true, false);
-      // the field holds the whole sentence — park ALL of it, +++ marks and
-      // all, or the glass lies about what the field says
-      let line = this.scrolltext.trim();
+      const line = this.scrolltext.trim();
+      const maxW = W - 16;
       let s = 2;
-      while (s > 0.5 && this.drawnW(line, s) > W - 16) s -= 0.25;
-      while (line.length > 1 && this.drawnW(line, s) > W - 16) line = line.slice(0, -1);
-      this.tinyText(line, H - 30, 0, s);
+      while (s > 1 && this.drawnW(line, s) > maxW) s -= 0.25;
+      if (this.drawnW(line, s) <= maxW) this.tinyText(line, H - 30, 0, s);
+      else {
+        const rows: string[] = [];
+        let cur = '';
+        for (const wd of line.split(' ')) {
+          const cand = cur ? cur + ' ' + wd : wd;
+          if (this.drawnW(cand, 1) <= maxW) { cur = cand; continue; }
+          if (cur) rows.push(cur);
+          cur = wd;
+          // a single word wider than the tube hard-wraps mid-word
+          while (cur.length > 1 && this.drawnW(cur, 1) > maxW) {
+            let k = cur.length - 1;
+            while (k > 1 && this.drawnW(cur.slice(0, k), 1) > maxW) k--;
+            rows.push(cur.slice(0, k));
+            cur = cur.slice(k);
+          }
+        }
+        if (cur) rows.push(cur);
+        const last = rows.length - 1;
+        rows.forEach((r, i) => this.tinyText(r, H - 26 - (last - i) * 11, 0, 1));
+      }
+      if (m === 'scrollhold') this.pinHold = true;
       return true;
     }
     // the edit pin crawls slow and soft — the tube should read like the
@@ -716,9 +736,18 @@ export class Demo {
     this.pinY = H - 30;
     try {
       if (m === 'scroll') {
-        // the line you're typing walks on now — a fresh text restarts the
-        // crawl's clock so the first glyph is on the glass this frame,
-        // not after the old sentence has crawled off
+        // releasing a parked line, the crawl picks the sentence up where
+        // the glass was holding it — the head resumes at its parked x
+        // instead of sailing in from off-screen or a stale clock
+        if (this.pinHold) {
+          this.pinHold = false;
+          const w2 = this.drawnW(this.scrolltext.trim(), 2);
+          const off = W - Math.max(8, (W - w2) / 2);
+          this.pinT0 = this.scrollSpeed > 0 ? t - off / (0.45 * 55 * this.scrollSpeed) : t;
+          this.pinText = this.scrolltext;
+        }
+        // a fresh text restarts the crawl's clock so the first glyph is
+        // on the glass this frame, not after the old sentence crawls off
         if (this.scrolltext !== this.pinText) { this.pinText = this.scrolltext; this.pinT0 = t; }
         this.renderClassic(t, true, true, 0.55, (t - this.pinT0) * 0.45);
       }
@@ -779,6 +808,9 @@ export class Demo {
   // the pinned scroller's own clock — set when the text it shows changes
   pinText = '';
   pinT0 = 0;
+  // a scrollhold park the 'scroll' pin still owes a handoff to — the crawl
+  // resumes from the parked head, not from whatever the clock last saw
+  pinHold = false;
   holdWipe(ms: number) { this.wipeHoldUntil = Math.max(this.wipeHoldUntil, performance.now() + ms); }
   // the SND ON badge's lease — set as the running phase begins
   sndOnUntil = 0;
