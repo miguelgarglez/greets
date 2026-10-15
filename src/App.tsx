@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import type { CSSProperties } from 'react';
 import { Demo, RAMPS } from './lib/demo.ts';
 import type { DemoAssets, RampName } from './lib/demo.ts';
@@ -79,11 +79,14 @@ export default function App() {
     void hapticsRef.current.trigger(n);
   };
   const powerRef = useRef({ started: 0, done: 0, pressAt: 0 });
+  // bumped on every rename — a same-name commit still replays the boot
+  const [bootSeq, setBootSeq] = useState(0);
 
   const assetsFor = (font: PixelFont): DemoAssets => ({
     font, name: demoName, seed, ramp: resolved.ramp, scrolltext,
     sections: resolved.sections, scrollSpeed: resolved.speed,
     wave: resolved.wave, logoMode: resolved.logo,
+    tuneOn: resolved.tune !== 'off',
   });
 
   const getFont = async (id: FontId): Promise<PixelFont> => {
@@ -103,7 +106,9 @@ export default function App() {
     const h = encodeSpec(spec);
     const url = (name ? '/' + encodeURIComponent(name.toLowerCase()) : '/') + (h ? '#' + h : '');
     if (location.pathname + location.hash !== url) history.replaceState(null, '', url);
-  }, [spec, name]);
+    // a refused-clipboard field is the URL — later edits must keep it true
+    if (linkState === 'manual') setLinkNote(url);
+  }, [spec, name, linkState]);
 
   const nameRef = useRef(name);
   nameRef.current = name;
@@ -186,7 +191,7 @@ export default function App() {
       stop = true; alive = false; cancelAnimationFrame(raf); demoRef.current = null;
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [name]);
+  }, [name, bootSeq]);
 
   // live re-bake when the deck changes anything but the name
   const configTok = useRef(0);
@@ -252,17 +257,54 @@ export default function App() {
     requestAnimationFrame(() => (document.querySelector('.fab') as HTMLElement | null)?.focus());
   };
 
+  // every layout shift that moves the tube is born from a key or a tap —
+  // snapshot its top at capture time, before React commits the change;
+  // by the time an effect or observer fires, offsetTop already moved
+  const tubeTopRef = useRef(-1);
+  useEffect(() => {
+    const snap = () => {
+      const t = document.querySelector('.tube') as HTMLElement | null;
+      if (t) tubeTopRef.current = t.offsetTop;
+    };
+    addEventListener('pointerdown', snap, true);
+    addEventListener('keydown', snap, true);
+    return () => {
+      removeEventListener('pointerdown', snap, true);
+      removeEventListener('keydown', snap, true);
+    };
+  }, []);
+  // the glass must travel to its new slot, not cut there — hold it where
+  // it was with a transform, then let the 0.45s curve carry it over
+  const flipTube = () => {
+    const tube = document.querySelector('.tube') as HTMLElement | null;
+    const from = tubeTopRef.current;
+    tubeTopRef.current = -1;
+    if (!tube || REDUCED || from < 0) return;
+    const dy = from - tube.offsetTop;
+    if (Math.abs(dy) < 3) return;
+    tube.style.transition = 'none';
+    tube.style.transform = `translateY(${dy}px)`;
+    requestAnimationFrame(() => {
+      tube.style.transition = 'transform 0.45s cubic-bezier(0.3, 1, 0.4, 1)';
+      tube.style.transform = '';
+    });
+  };
   // the tube sizes itself from the room above the deck — --deckh is the
   // bay's measured height. the deck is content-sized, so the measurement
   // is one-way: a bigger bay just means a smaller tube, never the reverse
-  useEffect(() => {
+  useLayoutEffect(() => {
     const root = document.documentElement;
     // the tube is moving for the next beat — the raster must not fire its
     // own shutters through the resize (the wipe mid-park is the slit)
     demoRef.current?.holdWipe(850);
-    if (!deckOpen) { root.style.removeProperty('--deckh'); return; }
+    if (!deckOpen) {
+      root.style.removeProperty('--deckh');
+      flipTube(); // layout for the closed bench is already committed
+      return;
+    }
     const el = document.querySelector('.deck') as HTMLElement | null;
     if (!el) return;
+    flipTube(); // layout for the open bay is already committed
     let lastH = 0;
     const ro = new ResizeObserver(() => {
       // publish the content height, not the squeezed border box — during the
@@ -275,10 +317,13 @@ export default function App() {
         if (lastH > 0) demoRef.current?.holdWipe(500);
         lastH = h;
         root.style.setProperty('--deckh', `${h}px`);
+        // a wider/taller bay just re-parked the tube — carry it, don't cut
+        flipTube();
       }
     });
     ro.observe(el);
     return () => { ro.disconnect(); root.style.removeProperty('--deckh'); };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [deckOpen]);
 
   useEffect(() => {
@@ -427,6 +472,9 @@ export default function App() {
     powerRef.current.started = performance.now();
     setPhase('poweron');
     setName(n);
+    // the boot must replay even when the string didn't change — the demo
+    // effect keys on bootSeq so a same-name rename still gets fresh frames
+    setBootSeq((b) => b + 1);
   };
   const saveResult = () => {
     if (!exp.result) return;
@@ -528,11 +576,20 @@ export default function App() {
           onSave={saveResult}
           onShareFile={shareFile}
           onShareLink={shareLink}
-          onRandomize={() => { pushUndo(); setSpec((s) => randomizeStyle(s, mulberry32(Date.now() & 0xffffffff), Object.keys(RAMPS) as RampName[])); thud(24); }}
+          onRandomize={() => {
+            pushUndo();
+            // the whole rig reskins — the shutter replays like a section
+            // swap does; the chip press already buzzed, no second thud
+            const dm = demoRef.current;
+            if (dm && phaseRef.current === 'running' && !REDUCED) dm.wipeIn();
+            setSpec((s) => randomizeStyle(s, mulberry32(Date.now() & 0xffffffff), Object.keys(RAMPS) as RampName[]));
+          }}
           onReset={() => {
             // RESET is a rig key like RANDOMISE — it reseeds the style dials
             // and leaves the words alone, so UNDO can always describe it
             pushUndo();
+            const dm = demoRef.current;
+            if (dm && phaseRef.current === 'running' && !REDUCED) dm.wipeIn();
             const d = defaultSpec(demoName);
             const p: Partial<Spec> = {};
             for (const k of STYLE_KEYS) (p as Record<string, unknown>)[k] = d[k];

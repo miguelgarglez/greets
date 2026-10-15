@@ -99,6 +99,9 @@ body { background: #060608; overflow: hidden; font-family: 'PS2P', monospace; }
 
 .app .tube { transition: width 0.45s cubic-bezier(0.3, 1, 0.4, 1); }
 .app.editing { flex-direction: column; justify-content: flex-start; }
+/* the centred glass still owes the viewport edge a frame of darkness —
+   the padding shrinks the room, auto margins halve what's left */
+@media (min-width: 721px) { .app.editing { padding-top: 22px; } }
 .app.editing .tube {
   flex: none;
   /* centred in the room the bay leaves it — the bay is content-sized and
@@ -262,10 +265,12 @@ body { background: #060608; overflow: hidden; font-family: 'PS2P', monospace; }
 .dinput:focus { border-bottom-color: var(--hot, #f80); outline: none; }
 
 .prog { font-size: 10px; color: var(--hot, #f80); align-self: center; letter-spacing: 1px; white-space: pre; }
+/* the NOW line wraps only at its dots — a segment never splits */
+.nowseg { white-space: nowrap; }
 
-/* a key that answers — a relabel flashes through the hot color in two hard
-   steps, a raster flicker, not a fade that hides what changed */
-@keyframes kswap { 0% { opacity: 0; color: var(--hot, #f80); } 50% { opacity: 1; color: var(--hot, #f80); } 100% { color: inherit; } }
+/* a relabel flickers in two hard steps, never repaints — a lit key's face
+   is already --hot, so re-coloring made COPIED vanish against its chip */
+@keyframes kswap { 0% { opacity: 0; } 50% { opacity: 0.45; } 100% { opacity: 1; } }
 .klabel { display: inline-block; animation: kswap 0.18s steps(2) backwards; }
 .prog.err { color: #ff5a50; }
 .prog.done { color: #7ee08a; }

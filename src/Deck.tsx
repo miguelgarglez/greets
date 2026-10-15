@@ -160,7 +160,13 @@ export default function Deck(props: {
   const setSec = (id: SectionId) => {
     const has = secs.includes(id);
     if (has && secPinRef.current !== id) { secPinRef.current = id; props.onPreview(id); return; }
-    if (has && secs.length === 1) return; // never an empty demo
+    if (has && secs.length === 1) {
+      // the last lit part can't leave the cycle — a second press on it is
+      // "show me the whole thing again", not a dead key with a stuck pin
+      secPinRef.current = '';
+      props.onPreview('scroll');
+      return;
+    }
     const next = has ? secs.filter((s) => s !== id) : [...secs, id];
     // stored canonical — the lit rig key and the played cycle always agree
     props.onPatch({ sections: SECTION_ORDER.filter((x) => next.includes(x)) });
@@ -232,7 +238,12 @@ export default function Deck(props: {
             </Row>
             <Row label="NOW">
               <span className="dnote big">
-                {`${resolved.ramp.toUpperCase()} · ${resolved.font.toUpperCase()} · LOGO ${resolved.logo.toUpperCase()} · SCROLL ${resolved.speed}× · TUNE ${resolved.tune.toUpperCase()}`}
+                {/* the line may only break AT a dot — never inside
+                    "· A", or the phone drops a lone letter on the row */}
+                {`${resolved.ramp.toUpperCase()} · ${resolved.font.toUpperCase()} · LOGO ${resolved.logo.toUpperCase()} · SCROLL ${resolved.speed}× · TUNE ${resolved.tune.toUpperCase()}`
+                  .split(' · ').map((s, i) => (
+                    <span key={i}>{i > 0 && ' '}<span className="nowseg">{i > 0 ? `· ${s}` : s}</span></span>
+                  ))}
               </span>
             </Row>
           </>
@@ -257,11 +268,14 @@ export default function Deck(props: {
               />
             </Field>
             <Field cap="SCROLLTEXT · EMPTY = AUTO" wide>
+              {/* blurred, the field shows the head of the sentence — the
+                  caret only owns the tail while you're actually typing;
+                  while focused, the glass echoes the whole fitted line */}
               <input
                 className="dinput" aria-label="scrolltext" maxLength={200}
                 placeholder="EMPTY = GENERATED" value={spec.text}
                 onFocus={() => setScrollFocus(true)}
-                onBlur={() => setScrollFocus(false)}
+                onBlur={(e) => { setScrollFocus(false); e.currentTarget.scrollLeft = 0; }}
                 onChange={(e) => props.onPatch({ text: cleanText(e.target.value) })}
                 onKeyDown={inputKeys}
               />

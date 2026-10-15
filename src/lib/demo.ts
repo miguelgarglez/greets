@@ -32,6 +32,7 @@ export interface DemoAssets {
   scrollSpeed: number;            // 1 = stock
   wave: [number, number, number]; // scroller sine: amp, spatial freq, temporal freq
   logoMode: LogoMode;
+  tuneOn: boolean;                // a real tune is armed — badges never lie
 }
 
 interface Star { x: number; y: number; z: number }
@@ -99,6 +100,7 @@ export class Demo {
     this.wave = a.wave;
     this.logoMode = a.logoMode;
     this.sections = a.sections;
+    this.tuneOn = a.tuneOn;
     if (fontChanged || rampChanged || this.name !== a.name) {
       this.name = a.name;
       this.bakeLogo();
@@ -395,11 +397,14 @@ export class Demo {
     // pixels of travel, so a one-name list fills the window and the wrap is
     // seamless instead of a dark pass
     const d = (t * 34) % total;
+    // copies tile in BOTH directions — a strip anchored only at the bottom
+    // leaves the window dark for any list shorter than the clip
+    const rewind = Math.ceil((H + lineH) / total);
     for (let i = 0; i < greetz.length; i++) {
       const n = greetz[i];
       const scale = n === 'YOU' ? 2.6 : 2;
       const w = this.drawnW(n, scale);
-      for (let y = H - d - i * lineH; y < H + lineH; y += total) {
+      for (let y = H - d - i * lineH - total * rewind; y < H + lineH; y += total) {
         if (y < -lineH) continue;
         const bounce = n === 'YOU' ? Math.sin(t * 4) * 3 : 0;
         const x0 = (W - w) / 2;
@@ -612,9 +617,11 @@ export class Demo {
     while (s > 1 && this.drawnW(line, s) > W - 16) s -= 0.5;
     this.tinyText(line, H - 34, 0, s);
     this.tinyText('- MOTION OFF -', 112, 0);
-    this.tinyText(this.muted ? 'M TO UNMUTE THE TUNE' : 'THE TUNE STILL PLAYS', 128, 0, 1);
+    // the still must not claim a tune that doesn't exist — OFF is a rig
+    // choice, not a muted speaker
+    this.tinyText(this.tuneOn ? (this.muted ? 'M TO UNMUTE THE TUNE' : 'THE TUNE STILL PLAYS') : 'THE TUNE KNOB IS OFF', 128, 0, 1);
     // the corner badges the sound state like the live paths do
-    this.tinyText(this.muted ? 'SND OFF' : 'SND ON', 3, 0, 1);
+    this.tinyText(this.muted || !this.tuneOn ? 'SND OFF' : 'SND ON', 3, 0, 1);
   }
 
   // the first beat after boot: the real baked logo lands letter by letter,
@@ -673,6 +680,7 @@ export class Demo {
   }
 
   muted = false;
+  private tuneOn = true;
   // while the deck is open it can pin the tube to the part being edited —
   // a knob you can't see move isn't a knob. '' means free rotation; a
   // section id pins that section; 'scroll' pins the classic scroller
@@ -694,7 +702,9 @@ export class Demo {
       // it fits, and if even that fails keep the START of the line, not
       // the middle of an overflowing run
       this.renderClassic(2, true, false);
-      let line = this.scrolltext.split('+++')[0].trim() || this.scrolltext;
+      // the field holds the whole sentence — park ALL of it, +++ marks and
+      // all, or the glass lies about what the field says
+      let line = this.scrolltext.trim();
       let s = 2;
       while (s > 0.5 && this.drawnW(line, s) > W - 16) s -= 0.25;
       while (line.length > 1 && this.drawnW(line, s) > W - 16) line = line.slice(0, -1);
@@ -744,6 +754,7 @@ export class Demo {
       if (held) this.wipeSkipSec = Math.floor(t / 9);
       else if (lt < 0.45 && this.wipeSkipSec !== Math.floor(t / 9)) this.wipe(lt / 0.45);
     }
+    else this.wipeSkipSec = Math.floor(t / 9); // a pinned frame consumes its section's wipe too
     // a rig swap melts the outgoing frame over the new one; a section-set
     // swap replays the shutter — the glass tells you the change landed
     if (this.xfadeCv) {
@@ -796,6 +807,19 @@ export class Demo {
       const y = -8 + i * 30 + Math.sin(t * 1.3 + i * 0.9) * 14;
       this.copperBar(y, t * 3 + i * 1.7);
     }
+    // the bars are the same ramp as the words — left naked they stripe
+    // straight through both. a dark plate under the logo and a trough
+    // under the crawl keep the copper loud and the name readable
+    if (this.logoMode === 'bounce') {
+      const [bx, by] = this.bouncePos(t);
+      c.fillStyle = 'rgba(5,5,10,0.72)';
+      c.fillRect(bx - 7, by - 6, this.logo.w + 14, this.logo.h + 12);
+    } else {
+      c.fillStyle = 'rgba(5,5,10,0.72)';
+      c.fillRect((W - this.logo.w) / 2 - 7, H * 0.34 - 14, this.logo.w + 14, this.logo.h + 22);
+    }
+    c.fillStyle = 'rgba(5,5,10,0.8)';
+    c.fillRect(0, 142, W, H - 142);
     this.waveLogo(t, H * 0.34);
     this.scroller(t);
   }
