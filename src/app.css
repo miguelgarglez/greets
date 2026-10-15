@@ -278,6 +278,9 @@ body { background: #060608; overflow: hidden; font-family: 'PS2P', monospace; }
      margins on the tube split the leftover room evenly around the glass,
      and a tall group scrolls its body instead of shrinking the tube away */
   .deck { width: 100vw; border-radius: 0; margin-top: 8px; max-height: 58dvh; }
+  /* four rigs, four equal cells — ACID never orphans a row */
+  .rigkeys { display: grid; grid-template-columns: 1fr 1fr; }
+  .rigkeys .key { justify-content: center; }
   .decktitle { display: none; }
   .dtabs { gap: 3px; }
   .deckhead { padding: 8px 8px; gap: 5px; }
@@ -288,7 +291,7 @@ body { background: #060608; overflow: hidden; font-family: 'PS2P', monospace; }
   .deckx { min-width: 44px; min-height: 44px; }
   .dlabel { width: 68px; font-size: 10px; padding-top: 15px; }
   .dfields { grid-template-columns: 1fr; gap: 2px; }
-  .dinput { padding: 9px 2px 8px; }
+  .dinput { padding: 9px 2px 8px; min-height: 44px; }
   .dkeys .dnote { flex-basis: 100%; }
   .fab { right: 12px; top: max(12px, calc(env(safe-area-inset-top) + 8px)); }
   .deckfoot { padding-bottom: calc(13px + env(safe-area-inset-bottom)); }

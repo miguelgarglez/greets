@@ -357,7 +357,10 @@ export class Demo {
       this.plasmaMaskCv.width = W; this.plasmaMaskCv.height = H;
     }
     const m = this.plasmaMaskCv.getContext('2d')!;
+    // the mask is rebuilt every frame — fillRect on yesterday's punched
+    // sheet compounds the alpha until the whole field is veil-black
     m.globalCompositeOperation = 'source-over';
+    m.clearRect(0, 0, W, H);
     // the veil dims the field enough that the name reads — but leaves more
     // than half the plasma visible, so the sea behind the word keeps moving
     m.fillStyle = 'rgba(14,14,24,0.42)';
