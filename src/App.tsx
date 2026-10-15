@@ -261,10 +261,11 @@ export default function App() {
   // snapshot its top at capture time, before React commits the change;
   // by the time an effect or observer fires, offsetTop already moved
   const tubeTopRef = useRef(-1);
+  const tubeTopAtRef = useRef(0);
   useEffect(() => {
     const snap = () => {
       const t = document.querySelector('.tube') as HTMLElement | null;
-      if (t) tubeTopRef.current = t.offsetTop;
+      if (t) { tubeTopRef.current = t.offsetTop; tubeTopAtRef.current = performance.now(); }
     };
     addEventListener('pointerdown', snap, true);
     addEventListener('keydown', snap, true);
@@ -278,8 +279,11 @@ export default function App() {
   const flipTube = () => {
     const tube = document.querySelector('.tube') as HTMLElement | null;
     const from = tubeTopRef.current;
+    const fresh = performance.now() - tubeTopAtRef.current < 1500;
     tubeTopRef.current = -1;
-    if (!tube || REDUCED || from < 0) return;
+    // a stale snapshot belongs to an old layout (e.g. popstate never fired
+    // an input event) — trusting it would drag the tube to a phantom slot
+    if (!tube || REDUCED || from < 0 || !fresh) return;
     const dy = from - tube.offsetTop;
     if (Math.abs(dy) < 3) return;
     tube.style.transition = 'none';
