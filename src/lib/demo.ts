@@ -2,7 +2,8 @@
 // everything is seeded: same name, same demo.
 import type { PixelFont } from './font.ts';
 import { bakeLogo } from './font.ts';
-import { mulberry32, pick, shuffle } from './prng.ts';
+import { mulberry32, pick } from './prng.ts';
+import type { SectionId, LogoMode } from './spec.ts';
 
 export const W = 320, H = 200;
 
@@ -19,37 +20,49 @@ export const RAMPS: Record<string, string[]> = {
 };
 export type RampName = keyof typeof RAMPS;
 
+export type { SectionId, LogoMode } from './spec.ts';
+
 export interface DemoAssets {
   font: PixelFont;
   name: string;
   seed: number;
   ramp: RampName;
   scrolltext: string;
+  sections: SectionId[];          // ordered; the greetz roll always follows
+  scrollSpeed: number;            // 1 = stock
+  wave: [number, number, number]; // scroller sine: amp, spatial freq, temporal freq
+  logoMode: LogoMode;
+  tuneOn: boolean;                // a real tune is armed — badges never lie
 }
 
 interface Star { x: number; y: number; z: number }
 
 export class Demo {
   private ctx: CanvasRenderingContext2D;
-  private font: PixelFont;
-  private logo: { cv: HTMLCanvasElement; w: number; h: number };
-  private stars: Star[];
-  private ramp: string[];
-  private scrolltext: string;
+  private font!: PixelFont;
+  private name = '';
+  private logo!: { cv: HTMLCanvasElement; w: number; h: number };
+  private stars: Star[] = [];
+  private ramp!: string[];
+  private scrolltext = '';
   private plasmaImg: ImageData;
-  private plasmaPal: Uint32Array;
-  private sections: string[];
-  private colLetter: Int16Array;
+  private plasmaPal!: Uint32Array;
+  private sections: SectionId[] = [];
+  private colLetter!: Int16Array;
+  private scrollSpeed = 1;
+  private wave: [number, number, number] = [5, 0.055, 3.2];
+  private logoMode: LogoMode = 'wave';
 
   constructor(cv: HTMLCanvasElement, a: DemoAssets) {
     cv.width = W; cv.height = H;
     this.ctx = cv.getContext('2d')!;
     this.ctx.imageSmoothingEnabled = false;
-    this.font = a.font;
-    this.ramp = RAMPS[a.ramp];
-    this.scrolltext = a.scrolltext;
-    const rng = mulberry32(a.seed);
-    this.stars = Array.from({ length: 150 }, () => ({ x: rng() * W, y: rng() * H, z: pick(rng, [0.25, 0.55, 1]) }));
+    this.plasmaImg = new ImageData(W, H);
+    this.applyAssets(a);
+  }
+
+  private bakeLogo() {
+    const a = { font: this.font, name: this.name };
     let scale = a.name.length <= 7 ? 4 : a.name.length <= 10 ? 3 : 2;
     const baked = bakeLogo(a.font, a.name, scale, [[0, '#ffffff'], [0.55, '#e8e8ff'], [0.8, this.ramp[4]], [1, this.ramp[2]]]);
     let logo: { cv: HTMLCanvasElement; w: number; h: number };
@@ -72,10 +85,53 @@ export class Demo {
     baked.spans.forEach(([x0, x1], i) => {
       for (let x = Math.round(x0); x < Math.round(x1) && x < this.colLetter.length; x++) this.colLetter[x] = i;
     });
-    this.plasmaImg = new ImageData(W, H);
-    this.plasmaPal = this.buildPlasmaPalette(a.ramp);
-    this.sections = shuffle(rng, ['classic', 'plasma', 'blitter']);
+    this.solidCache.clear();
+    this.glyphCache.clear();
+    this.plasmaMaskCv = null;
   }
+
+  private applyAssets(a: DemoAssets) {
+    const fontChanged = this.font !== a.font;
+    const rampChanged = this.ramp !== RAMPS[a.ramp];
+    this.font = a.font;
+    this.ramp = RAMPS[a.ramp];
+    this.scrolltext = a.scrolltext;
+    this.scrollSpeed = a.scrollSpeed;
+    this.wave = a.wave;
+    this.logoMode = a.logoMode;
+    this.sections = a.sections;
+    this.tuneOn = a.tuneOn;
+    if (fontChanged || rampChanged || this.name !== a.name) {
+      this.name = a.name;
+      this.bakeLogo();
+    }
+    if (rampChanged) this.plasmaPal = this.buildPlasmaPalette(a.ramp);
+    if (!this.stars.length) {
+      const rng = mulberry32(a.seed);
+      this.stars = Array.from({ length: 150 }, () => ({ x: rng() * W, y: rng() * H, z: pick(rng, [0.25, 0.55, 1]) }));
+    }
+  }
+
+  // live re-bake from the control deck — the demo keeps playing under it
+  configure(a: DemoAssets) {
+    this.applyAssets(a);
+  }
+
+  // a style change should arrive, not cut — snapshot the outgoing frame
+  // and let it melt over the new picture for a fifth of a second
+  private xfadeCv: HTMLCanvasElement | null = null;
+  private xfadeT0 = 0;
+  beginXfade() {
+    if (!this.xfadeCv) {
+      this.xfadeCv = document.createElement('canvas');
+      this.xfadeCv.width = W; this.xfadeCv.height = H;
+    }
+    this.xfadeCv.getContext('2d')!.drawImage(this.ctx.canvas, 0, 0);
+    this.xfadeT0 = performance.now();
+  }
+  // a section-set change replays the copper shutter instead of cutting
+  private wipeInT0 = -1e9;
+  wipeIn() { this.wipeInT0 = performance.now(); }
 
   private buildPlasmaPalette(ramp: RampName): Uint32Array {
     const r = RAMPS[ramp];
@@ -115,6 +171,21 @@ export class Demo {
     }
   }
 
+  // the reserved band the words own — a solid trough under the copper so
+  // no bar ever shares pixels with a line of type. every crawl clamps its
+  // whole sine excursion inside it, and the parked block grows its own
+  // plate down to this top edge when it wraps
+  private trough() {
+    const c = this.ctx;
+    c.fillStyle = '#06060c';
+    c.fillRect(0, 162, W, H - 162);
+    // hairline top rule and a floor — without edges the band reads as the
+    // page's void and trough text looks like it escaped the glass
+    c.fillStyle = '#1c1c30';
+    c.fillRect(0, 162, W, 1);
+    c.fillRect(0, H - 2, W, 2);
+  }
+
   // a single copper bar: 24px tall, hot in the middle, dark at edges,
   // with the ramp phase cycling like a real copperlist
   private copperBar(y: number, phase: number) {
@@ -136,8 +207,21 @@ export class Demo {
 
   private waveLogo(t: number, cy: number, trail = true) {
     const c = this.ctx;
+    if (this.logoMode === 'still') {
+      c.drawImage(this.logo.cv, (W - this.logo.w) / 2, cy);
+      return;
+    }
     const x0 = (W - this.logo.w) / 2;
     const draws = trail ? [{ d: -0.11, a: 0.25 }, { d: -0.055, a: 0.45 }, { d: 0, a: 1 }] : [{ d: 0, a: 1 }];
+    if (this.logoMode === 'bounce') {
+      for (const { d, a } of draws) {
+        c.globalAlpha = a;
+        const p = this.bouncePos(t + d);
+        c.drawImage(this.logo.cv, p[0], p[1]);
+      }
+      c.globalAlpha = 1;
+      return;
+    }
     for (const { d, a } of draws) {
       c.globalAlpha = a;
       for (let x = 0; x < this.logo.w; x++) {
@@ -148,18 +232,49 @@ export class Demo {
     c.globalAlpha = 1;
   }
 
-  private scroller(t: number, scale = 2, yBase = H - 22) {
+  // dvd-style bounce position, clamped inside the copper band — shared by
+  // the blitter section and the bounce logo mode
+  private bouncePos(t: number): [number, number] {
+    const lw = this.logo.w, lh = this.logo.h;
+    const yTop = 42, yBot = Math.max(yTop + 8, 134 - lh);
+    const bh = yBot - yTop, bw = W - lw - 16;
+    return [
+      8 + bw * (0.5 - 0.5 * Math.cos(t * 80 * Math.PI / bw)),
+      yTop + bh * (0.5 - 0.5 * Math.cos(t * 55 * Math.PI / bh)),
+    ];
+  }
+
+  // pins raise the crawl a few pixels — glyphs flush with the raster's
+  // bottom row read as cut by the bezel, not parked on it
+  pinY: number | null = null;
+  private scroller(t: number, scale = 2, yBase = H - 22, ampScale = 1, text?: string) {
     const c = this.ctx;
-    const speed = 55;
+    const speed = 55 * this.scrollSpeed;
+    const [amp0, sf, tf] = this.wave;
+    // a vertical grab on the pinned crawl bends the wave while it's held;
+    // the trough clamp still owns the excursion, bend or no bend
+    const amp = amp0 * ampScale * (this.pinY != null ? this.pinBend : 1);
+    const gh = 8 * scale;
+    // the wave never dips a glyph under the glass AND never lifts one into
+    // the copper — the trough is a reserved band, so the whole excursion
+    // clamps inside it at every speed and amplitude; the margins are real:
+    // 8px under the bar and 8px off the bottom edge, so no letter ever
+    // kisses the glass's invisible lip (dark-on-dark, the edge has no line)
+    const band = Math.min(amp, (H - 8 - 166 - gh) / 2);
+    const yb = Math.max(166 + band, Math.min(this.pinY ?? yBase, H - 8 - band - gh));
+    const a2 = band;
+    const line = text ?? this.scrolltext;
     const adv = this.font.px * scale * 1.0;
-    const total = this.scrolltext.length * adv + W + 40;
-    const off = (t * speed) % total;
+    const total = line.length * adv + W + 40;
+    // normalize — a scrubbed pin can run scrollT negative, and % keeps the
+    // sign in JS; the crawl is a ring, so wrap instead of going blank
+    const off = ((t * speed) % total + total) % total;
     let x = W - off;
-    for (let i = 0; i < this.scrolltext.length; i++) {
-      const g = this.font.get(this.scrolltext[i]);
+    for (let i = 0; i < line.length; i++) {
+      const g = this.font.get(line[i]);
       const cw = g ? g.w * scale : adv * 0.6;
       if (x > -adv && x < W + adv && g) {
-        const y = yBase + Math.sin(t * 3.2 + x * 0.055) * 5;
+        const y = yb + Math.sin(t * tf + x * sf) * a2;
         c.drawImage(g.cv, x, y, g.w * scale, g.h * scale);
       }
       x += cw + 1;
@@ -178,7 +293,9 @@ export class Demo {
           + Math.sin(Math.hypot(x - W / 2, y - H / 2) * 0.05 - t * 1.3)
           + Math.sin(x * 0.11 - t * 1.7) * 0.7
           + Math.sin((x - y) * 0.09 + t * 1.5) * 0.7;
-        const idx = Math.max(0, Math.min(63, Math.round((v + 6.4) / 12.8 * 63)));
+        // the field never dies to black — the palette ride is biased into
+        // its lit range so the sea keeps moving even mid-cycle
+        const idx = Math.max(0, Math.min(63, Math.round((0.16 + 0.84 * ((v + 6.4) / 12.8)) * 63)));
         d[i] = pal[idx] & 0xff; d[i + 1] = (pal[idx] >> 8) & 0xff; d[i + 2] = (pal[idx] >> 16) & 0xff; d[i + 3] = 255;
         i += 4;
       }
@@ -210,14 +327,15 @@ export class Demo {
     }
   }
 
-  renderClassic(t: number, logo = true, scroll = true) {
+  renderClassic(t: number, logo = true, scroll = true, ampScale = 1, scrollT = t) {
     const c = this.ctx;
     c.fillStyle = '#05050a';
     c.fillRect(0, 0, W, H);
     this.starfield(t);
     this.copper(t);
+    this.trough();
     if (logo) this.waveLogo(t, H * 0.3);
-    if (scroll) this.scroller(t);
+    if (scroll) this.scroller(scrollT, 2, H - 22, ampScale);
   }
 
   private solidCache = new Map<string, HTMLCanvasElement>();
@@ -266,13 +384,22 @@ export class Demo {
       this.plasmaMaskCv.width = W; this.plasmaMaskCv.height = H;
     }
     const m = this.plasmaMaskCv.getContext('2d')!;
+    // the mask is rebuilt every frame — fillRect on yesterday's punched
+    // sheet compounds the alpha until the whole field is veil-black
     m.globalCompositeOperation = 'source-over';
-    m.fillStyle = 'rgba(46,46,64,0.6)';
+    m.clearRect(0, 0, W, H);
+    // the veil dims the field enough that the name reads — but leaves more
+    // than half the plasma visible, so the sea behind the word keeps moving
+    m.fillStyle = 'rgba(14,14,24,0.42)';
     m.fillRect(0, 0, W, H);
     m.globalCompositeOperation = 'destination-out';
-    m.drawImage(this.logo.cv, (W - this.logo.w) / 2, H * 0.3 + Math.sin(t * 1.2) * 6);
+    // the window is the logo — it obeys the logo dial: held, drifting, or loose
+    const [mx, my] = this.logoMode === 'bounce' ? this.bouncePos(t)
+      : [(W - this.logo.w) / 2, H * 0.3 + (this.logoMode === 'still' ? 0 : Math.sin(t * 1.2) * 6)];
+    m.drawImage(this.logo.cv, mx, my);
     c.drawImage(this.plasmaMaskCv, 0, 0);
     this.copper(t);
+    this.trough();
     this.scroller(t);
   }
 
@@ -285,27 +412,85 @@ export class Demo {
     // is ever sliced by the copper
     c.save();
     c.beginPath();
-    c.rect(0, 36, W, 118);
+    // the clip reaches a few px past the band so a bouncing cap height
+    // slides under the frame edge whole instead of shearing on it
+    c.rect(0, 33, W, 124);
     c.clip();
+    if (!greetz.length) { c.restore(); this.copperBar(6, t * 3); this.copperBar(H - 30, t * 3 + 3); return; }
     const lineH = 22;
     const total = greetz.length * lineH;
-    const off = (t * 34) % (total + H) - lineH;
-    greetz.forEach((n, i) => {
-      const y = H - off - i * lineH;
-      if (y < -lineH || y > H + lineH) return;
+    // the roll is an infinite tiled strip — every name repeats every `total`
+    // pixels of travel, so a one-name list fills the window and the wrap is
+    // seamless instead of a dark pass
+    const d = (t * 34) % total;
+    // copies tile in BOTH directions — a strip anchored only at the bottom
+    // leaves the window dark for any list shorter than the clip
+    const rewind = Math.ceil((H + lineH) / total);
+    for (let i = 0; i < greetz.length; i++) {
+      const n = greetz[i];
       const scale = n === 'YOU' ? 2.6 : 2;
-      let x = (W - this.drawnW(n, scale)) / 2;
-      for (const ch of n) {
-        const gl = this.font.get(ch);
-        if (!gl) { x += 8 * scale * 0.5; continue; }
-        const bounce = n === 'YOU' ? Math.sin(t * 4 + x * 0.05) * 3 : 0;
-        c.drawImage(gl.cv, x, y + bounce, gl.w * scale, gl.h * scale);
-        x += gl.w * scale + 2;
+      const w = this.drawnW(n, scale);
+      for (let y = H - d - i * lineH - total * rewind; y < H + lineH; y += total) {
+        if (y < -lineH) continue;
+        const bounce = n === 'YOU' ? Math.sin(t * 4) * 3 : 0;
+        const x0 = (W - w) / 2;
+        let x = x0;
+        for (const ch of n) {
+          const gl = this.font.get(ch);
+          if (!gl) { x += 8 * scale * 0.5; continue; }
+          c.drawImage(gl.cv, x, y + bounce, gl.w * scale, gl.h * scale);
+          x += gl.w * scale + 2;
+        }
       }
-    });
+    }
     c.restore();
     this.copperBar(6, t * 3);
     this.copperBar(H - 30, t * 3 + 3);
+  }
+
+  // the greetz pin mode: a credit board, not a roll — every name the field
+  // will produce is laid out at once so editing it shows what you edited
+  renderGreetzBoard(greetz: string[]) {
+    const c = this.ctx;
+    c.fillStyle = '#05050a';
+    c.fillRect(0, 0, W, H);
+    c.save();
+    c.beginPath();
+    c.rect(0, 36, W, 118);
+    c.clip();
+    // pack the names into rows inside the band; YOU still gets its size —
+    // measure at the scale we will draw and shrink until the last baseline
+    // fits the clip. the field can store more than one scale can show
+    const fits = (s: number, lh: number) => {
+      let rows = 1, rx = 18;
+      for (const n of greetz) {
+        const w = this.drawnW(n, n === 'YOU' ? 2.2 : s) + 16;
+        if (rx + w > W - 14) { rows++; rx = 18; }
+        rx += w;
+      }
+      return 48 + rows * lh <= 150;
+    };
+    let scale = 1.6, lineH = 26;
+    for (const [s, lh] of [[1.3, 22], [1.05, 18], [0.85, 15], [0.7, 13]] as const) {
+      if (fits(scale, lineH)) break;
+      scale = s; lineH = lh;
+    }
+    let x = 18, y = 48;
+    for (const n of greetz) {
+      const s = n === 'YOU' ? 2.2 : scale;
+      const w = this.drawnW(n, s);
+      if (x + w > W - 14) { x = 18; y += lineH; }
+      for (const ch of n) {
+        const gl = this.font.get(ch);
+        if (!gl) { x += 8 * s * 0.5; continue; }
+        c.drawImage(gl.cv, x, y + (n === 'YOU' ? -4 : 0), gl.w * s, gl.h * s);
+        x += gl.w * s + 2;
+      }
+      x += 16;
+    }
+    c.restore();
+    this.copperBar(6, 1.3);
+    this.copperBar(H - 30, 4.3);
   }
 
   private lastDraftLen = 0;
@@ -343,19 +528,23 @@ export class Demo {
     c.fillStyle = '#05050a';
     c.fillRect(0, 0, W, H);
     this.starfield(t * 0.15);
-    const shown = (draft.toUpperCase() || '').slice(0, 12);
+    const shown = (draft.toUpperCase() || '').slice(0, 14);
     if (shown.length > this.lastDraftLen) { this.flashStart = t; this.flashIdx = shown.length - 1; }
     this.lastDraftLen = shown.length;
-    this.tinyText(badPath ? 'NOT A NAME' : 'TYPE A NAME', 52, t, 2);
+    // a keystroke kicks the copper — the machine reacts too. the bars draw
+    // first so the trough can reserve the words' band over their tails
+    const flash = t - this.flashStart < 0.28;
+    this.copper(t, 8, 146, flash ? 6 : 0, flash ? 3 : 0);
+    this.trough();
+    this.tinyText(badPath ? 'NO DISK' : 'TYPE A NAME', 52, t, 2);
     const x = this.drawDraft(shown, t);
     if (Math.floor(t * 2) % 2 === 0) {
       c.fillStyle = this.ramp[6];
       c.fillRect(x, 96 + 18, 14, 3);
     }
-    if (shown) this.tinyText('PRESS ENTER', 138, t, 1);
-    // a keystroke kicks the copper — the machine reacts too
-    const flash = t - this.flashStart < 0.28;
-    this.copper(t, 8, 178, flash ? 6 : 0, flash ? 3 : 0);
+    if (shown) this.tinyText('PRESS ENTER', 124, t, 1);
+    // a bad path still gets a working machine — the insert-disk line crawls
+    if (badPath) this.scroller(t * 0.6, 1.5, H - 26, 0.8, 'DISK ERROR +++ INSERT A NAME AND BOOT +++ ');
   }
 
   // a pixel power key — the visible boot target on touch, drawn pressed
@@ -424,7 +613,7 @@ export class Demo {
       c.fillStyle = '#05050a';
       c.fillRect(0, 0, W, H);
       this.starfield(t * 0.15);
-      this.drawDraft(draft.toUpperCase().slice(0, 12), t);
+      this.drawDraft(draft.toUpperCase().slice(0, 14), t);
     } else {
       this.renderClassic(0, false, false);
     }
@@ -441,15 +630,26 @@ export class Demo {
   }
 
   // prefers-reduced-motion: one frozen frame, honestly labelled in open
-  // pixels — a complete parked scrolltext line, and the state of the tune
-  renderReduced() {
+  // pixels — a complete parked scrolltext line, and the state of the tune.
+  // a deck pin wins, so the still shows the thing being edited
+  renderReduced(greetz: string[] = []) {
+    // a deck pin owns the whole still — no captions painted through it,
+    // but the mute badge is still owed
+    if (this.renderPinned(2, greetz, true)) {
+      if (this.muted) this.tinyText('SND OFF', 3, 0, 1);
+      return;
+    }
     this.renderClassic(2, true, false);
     const line = this.scrolltext.split('+++')[0].trim();
     let s = 2;
     while (s > 1 && this.drawnW(line, s) > W - 16) s -= 0.5;
     this.tinyText(line, H - 34, 0, s);
     this.tinyText('- MOTION OFF -', 112, 0);
-    this.tinyText(this.muted ? 'M TO UNMUTE THE TUNE' : 'THE TUNE STILL PLAYS', 128, 0, 1);
+    // the still must not claim a tune that doesn't exist — OFF is a rig
+    // choice, not a muted speaker
+    this.tinyText(this.tuneOn ? (this.muted ? 'M TO UNMUTE THE TUNE' : 'THE TUNE STILL PLAYS') : 'THE TUNE KNOB IS OFF', 128, 0, 1);
+    // the corner badges the sound state like the live paths do
+    this.tinyText(this.muted || !this.tuneOn ? 'SND OFF' : 'SND ON', 3, 0, 1);
   }
 
   // the first beat after boot: the real baked logo lands letter by letter,
@@ -462,6 +662,7 @@ export class Demo {
     c.fillRect(0, 0, W, H);
     this.starfield(t);
     this.copper(t);
+    this.trough();
     const hot = this.solidLogo(this.ramp[6]);
     const x0 = (W - this.logo.w) / 2;
     const draws = [{ d: -0.11, a: 0.25 }, { d: -0.055, a: 0.45 }, { d: 0, a: 1 }];
@@ -469,7 +670,7 @@ export class Demo {
     // each typed letter holds its cell until its own chrome column lands on
     // that spot, then hands off — one object, never a cut
     if (draft) {
-      this.drawDraft(draft.toUpperCase().slice(0, 12), t, 1, (i) => {
+      this.drawDraft(draft.toUpperCase().slice(0, 14), t, 1, (i) => {
         const ap = 0.25 + i * 0.1;
         return u < ap ? 1 : Math.max(0, 1 - (u - ap) / 0.18);
       });
@@ -502,24 +703,208 @@ export class Demo {
     }
     // the scroller waits for the whole name, then slides in from the right
     if (u > 0.25 + nLetters * 0.1 + 0.15) this.scroller(t);
+    // the state of the sound is painted from the first running frame
+    if (this.muted) this.tinyText('SND OFF', 3, 0, 1);
+    else if (performance.now() < this.sndOnUntil) this.tinyText('SND ON', 3, 0, 1);
   }
 
   muted = false;
+  private tuneOn = true;
+  // while the deck is open it can pin the tube to the part being edited —
+  // a knob you can't see move isn't a knob. '' means free rotation; a
+  // section id pins that section; 'scroll' pins the classic scroller
+  previewMode: '' | 'scroll' | 'scrollhold' | 'greetz' | SectionId = '';
+
+  // the field's caret index, echoed on the glass while the scroll field is
+  // parked — set by the input's selection events; -1 hides it
+  pinCaret = -1;
+
+  // the parked line's layout — one fitted line if it holds, else rows
+  // wrapped at the gaps. each row carries its char span back into the
+  // field value so a press or the caret can land on a glyph. shared by
+  // the renderer and the pointer — the glass can't lie about where a
+  // character sits
+  private parkedRows(): { rows: { t: string; s: number; e: number; y: number }[]; scale: number } {
+    const line = this.scrolltext.trim();
+    const maxW = W - 16;
+    let s = 2;
+    while (s > 1 && this.drawnW(line, s) > maxW) s -= 0.25;
+    if (this.drawnW(line, s) <= maxW) return { rows: [{ t: line, s: 0, e: line.length, y: H - 30 }], scale: s };
+    const spans: [number, string][] = [];
+    let pos = 0;
+    for (const wd of line.split(' ')) { spans.push([pos, wd]); pos += wd.length + 1; }
+    const rows: { t: string; s: number; e: number }[] = [];
+    let cur = '', cs = 0;
+    for (const [wp, wd] of spans) {
+      const cand = cur ? cur + ' ' + wd : wd;
+      if (this.drawnW(cand, 1) <= maxW) { cur = cand; continue; }
+      if (cur) rows.push({ t: cur, s: cs, e: wp });
+      cur = wd; cs = wp;
+      // a single word wider than the tube hard-wraps mid-word
+      while (cur.length > 1 && this.drawnW(cur, 1) > maxW) {
+        let k = cur.length - 1;
+        while (k > 1 && this.drawnW(cur.slice(0, k), 1) > maxW) k--;
+        rows.push({ t: cur.slice(0, k), s: cs, e: cs + k });
+        cur = cur.slice(k); cs += k;
+      }
+    }
+    if (cur) rows.push({ t: cur, s: cs, e: cs + cur.length });
+    const last = rows.length - 1;
+    return { rows: rows.map((r, i) => ({ ...r, y: 184 - (last - i) * 11 })), scale: 1 };
+  }
+
+  // a press on the parked line is a press on the field — answers the
+  // caret index under the point, so the app can seat it in the input
+  caretAt(px: number, py: number): number {
+    const { rows, scale } = this.parkedRows();
+    if (!rows.length) return 0;
+    let row = rows[0];
+    for (const r of rows) if (Math.abs(py - (r.y + 4 * scale)) < Math.abs(py - (row.y + 4 * scale))) row = r;
+    const x0 = (W - this.drawnW(row.t, scale)) / 2;
+    let acc = x0, i = 0;
+    while (i < row.t.length) {
+      const w = ((this.font.get(row.t[i])?.w ?? this.font.px * 0.5) + 1) * scale;
+      if (px < acc + w / 2) break;
+      acc += w; i++;
+    }
+    return row.s + i;
+  }
+
+  // a drag on the pinned crawl walks the sentence under the finger —
+  // positive px drags the text right, against its natural march; the
+  // vertical axis bends the wave's amplitude while the grab is held
+  pinBend = 1;
+  scrub(px: number) {
+    if (this.scrollSpeed <= 0) return;
+    this.pinT0 += px / (0.45 * 55 * this.scrollSpeed);
+  }
+  bend(dy: number) {
+    this.pinBend = Math.min(2.4, Math.max(0.15, this.pinBend - dy / 26));
+  }
+
+  // returns true when a pin owns the frame — shared by the live loop and
+  // the reduced-motion still so the pin works in both
+  private renderPinned(t: number, greetz: string[], still = false): boolean {
+    const m = this.previewMode;
+    if (!m) return false;
+    // absolute clock — a pin must not restart its crawl on the rotator's
+    // 9-second boundary
+    if (m === 'greetz') { this.renderGreetzBoard(greetz); return true; }
+    // a focused scroll field parks the whole phrase fitted in the band —
+    // the line answers the keys as you type; the crawl resumes on blur
+    if (m === 'scrollhold' || (m === 'scroll' && still)) {
+      this.renderClassic(2, true, false);
+      const { rows, scale } = this.parkedRows();
+      // a stack taller than the trough grows its own plate upward over the
+      // copper rather than letting a row climb through the bar
+      if (rows.length > 1 && rows[0].y - 4 < 162) {
+        const c = this.ctx;
+        c.fillStyle = '#06060c';
+        c.fillRect(0, rows[0].y - 4, W, H - (rows[0].y - 4));
+      }
+      for (const r of rows) this.tinyText(r.t, r.y, 0, scale);
+      // the glass IS the field while it's parked — the caret sits at the
+      // index the input carries. it blinks on the live clock, but on a
+      // reduced-motion still it must hold — a one-shot paint landing in
+      // the blink's off half would leave no caret until the next event
+      if (this.pinCaret >= 0 && (still || Math.floor(performance.now() / 480) % 2 === 0)) {
+        const ci = Math.min(this.pinCaret, this.scrolltext.trim().length);
+        // a row's span ends where the next row's word starts — an index on
+        // the boundary belongs to the row below, so compare strictly
+        const row = rows.find((r) => ci < r.e) ?? rows[rows.length - 1];
+        if (row) {
+          const rx = (W - this.drawnW(row.t, scale)) / 2 + this.drawnW(row.t.slice(0, Math.max(0, ci - row.s)), scale);
+          const c = this.ctx;
+          c.fillStyle = this.ramp[6];
+          c.fillRect(Math.round(rx), row.y - 2, 2, 8 * scale + 4);
+        }
+      }
+      if (m === 'scrollhold') this.pinHold = true;
+      return true;
+    }
+    // the edit pin crawls slow and soft — the tube should read like the
+    // field you're typing in, not pile the sentence on a steep sine
+    this.pinY = H - 30;
+    try {
+      if (m === 'scroll') {
+        // releasing a parked line, the crawl picks the sentence up where
+        // the glass was holding it — the head resumes at its parked x
+        // instead of sailing in from off-screen or a stale clock
+        if (this.pinHold) {
+          this.pinHold = false;
+          const w2 = this.drawnW(this.scrolltext.trim(), 2);
+          const off = W - Math.max(8, (W - w2) / 2);
+          this.pinT0 = this.scrollSpeed > 0 ? t - off / (0.45 * 55 * this.scrollSpeed) : t;
+          this.pinText = this.scrolltext;
+        }
+        // a fresh text restarts the crawl's clock so the first glyph is
+        // on the glass this frame, not after the old sentence crawls off
+        if (this.scrolltext !== this.pinText) { this.pinText = this.scrolltext; this.pinT0 = t; }
+        this.renderClassic(t, true, true, 0.55, (t - this.pinT0) * 0.45);
+      }
+      else if (m === 'classic') this.renderClassic(t);
+      else if (m === 'plasma') this.renderPlasma(t);
+      else if (m === 'copper') this.renderCopper(t);
+      else this.renderBlitter(t);
+    } finally {
+      this.pinY = null;
+    }
+    return true;
+  }
 
   renderLoop(t: number, greetz: string[]) {
-    const i = Math.floor(t / 9) % (this.sections.length + 1);
-    const lt = t - Math.floor(t / 9) * 9;
-    if (i === this.sections.length) this.renderGreetz(lt, greetz);
-    else {
-      const s = this.sections[i];
-      if (s === 'classic') this.renderClassic(lt);
-      else if (s === 'plasma') this.renderPlasma(lt);
-      else this.renderBlitter(lt);
+    const c = this.ctx;
+    if (!this.renderPinned(t, greetz)) {
+      const i = Math.floor(t / 9) % (this.sections.length + 1);
+      const lt = t - Math.floor(t / 9) * 9;
+      if (i === this.sections.length) this.renderGreetz(lt, greetz);
+      else {
+        const s = this.sections[i];
+        if (s === 'classic') this.renderClassic(lt);
+        else if (s === 'plasma') this.renderPlasma(lt);
+        else if (s === 'copper') this.renderCopper(lt);
+        else this.renderBlitter(lt);
+      }
+      // sections never teleport: a copper-clock wipe reveals the new frame.
+      // while the tube itself is moving (deck park in or out) the shutters
+      // hold — a wipe fired through a resize is the slit, not a transition.
+      // a held wipe doesn't arrive half-closed when the hold ends: if the
+      // hold covered this section's window, that wipe is consumed
+      const held = performance.now() < this.wipeHoldUntil;
+      if (held) this.wipeSkipSec = Math.floor(t / 9);
+      else if (lt < 0.45 && this.wipeSkipSec !== Math.floor(t / 9)) this.wipe(lt / 0.45);
     }
-    // sections never teleport: a copper-clock wipe reveals the new frame
-    this.wipe(lt / 0.45);
+    else this.wipeSkipSec = Math.floor(t / 9); // a pinned frame consumes its section's wipe too
+    // a rig swap melts the outgoing frame over the new one; a section-set
+    // swap replays the shutter — the glass tells you the change landed
+    if (this.xfadeCv) {
+      const xu = (performance.now() - this.xfadeT0) / 220;
+      if (xu >= 1) this.xfadeCv = null;
+      else { c.globalAlpha = 1 - xu; c.drawImage(this.xfadeCv, 0, 0); c.globalAlpha = 1; }
+    }
+    const wu = (performance.now() - this.wipeInT0) / 450;
+    if (wu < 1) this.wipe(wu);
+    // the mute badge sits above any pin — silence must be visible; a fresh
+    // boot answers the same way so the state is never inferred
     if (this.muted) this.tinyText('SND OFF', 3, 0, 1);
+    else if (performance.now() < this.sndOnUntil) this.tinyText('SND ON', 3, 0, 1);
   }
+
+  // suppress the section wipe for a wall-clock window — set while CSS is
+  // still parking or releasing the tube
+  wipeHoldUntil = 0;
+  // a section whose wipe window was spent inside a hold — the shutters
+  // must not slam half-closed the moment the hold lifts
+  wipeSkipSec = -1;
+  // the pinned scroller's own clock — set when the text it shows changes
+  pinText = '';
+  pinT0 = 0;
+  // a scrollhold park the 'scroll' pin still owes a handoff to — the crawl
+  // resumes from the parked head, not from whatever the clock last saw
+  pinHold = false;
+  holdWipe(ms: number) { this.wipeHoldUntil = Math.max(this.wipeHoldUntil, performance.now() + ms); }
+  // the SND ON badge's lease — set as the running phase begins
+  sndOnUntil = 0;
 
   // dark shutters parting from center, edged with the ramp — one transition
   // grammar for section changes and the landing -> preboot beat
@@ -535,27 +920,62 @@ export class Demo {
     c.fillRect(W - half - 2, 0, 2, H);
   }
 
+  // a wall of raster bars — the full screen breathing in the name's ramp,
+  // each bar riding its own sine so the field rolls like sheet metal
+  renderCopper(t: number) {
+    const c = this.ctx;
+    c.fillStyle = this.ramp[0];
+    c.fillRect(0, 0, W, H);
+    for (let i = 0; i < 7; i++) {
+      const y = -8 + i * 30 + Math.sin(t * 1.3 + i * 0.9) * 14;
+      this.copperBar(y, t * 3 + i * 1.7);
+    }
+    // the bars are the same ramp as the words — left naked they stripe
+    // straight through both. a dark plate under the logo and a trough
+    // under the crawl keep the copper loud and the name readable
+    if (this.logoMode === 'bounce') {
+      const [bx, by] = this.bouncePos(t);
+      c.fillStyle = 'rgba(5,5,10,0.72)';
+      c.fillRect(bx - 7, by - 6, this.logo.w + 14, this.logo.h + 12);
+    } else {
+      c.fillStyle = 'rgba(5,5,10,0.72)';
+      c.fillRect((W - this.logo.w) / 2 - 7, H * 0.34 - 14, this.logo.w + 14, this.logo.h + 22);
+    }
+    c.fillStyle = 'rgba(5,5,10,0.8)';
+    c.fillRect(0, 142, W, H - 142);
+    // the trough the words own is solid — a bar ghosting through at a
+    // fifth strength still slices a 16px glyph
+    this.trough();
+    this.waveLogo(t, H * 0.34);
+    this.scroller(t);
+  }
+
   renderBlitter(t: number) {
     const c = this.ctx;
     c.fillStyle = '#05050a';
     c.fillRect(0, 0, W, H);
     this.starfield(t);
     this.copper(t);
-    // the logo bounces dvd-style with trail, clamped to the band between the
-    // copper bars; cosine easing so the turns read as motion, not math
-    const lw = this.logo.w, lh = this.logo.h;
-    // the red foot must clear the lower copper — clamp a few px above it —
-    // and the word stays inside the glass, off the bezel
-    const yTop = 42, yBot = Math.max(yTop + 8, 134 - lh);
-    const bh = yBot - yTop, bw = W - lw - 16;
-    const bounceX = (tt: number) => 8 + bw * (0.5 - 0.5 * Math.cos(tt * 80 * Math.PI / bw));
-    const bounceY = (tt: number) => yTop + bh * (0.5 - 0.5 * Math.cos(tt * 55 * Math.PI / bh));
-    for (const [d, a] of [[-0.09, 0.2], [-0.045, 0.4]] as const) {
-      c.globalAlpha = a;
-      c.drawImage(this.logo.cv, bounceX(t + d), bounceY(t + d));
+    this.trough();
+    // the blitter's bounce is its identity — but the logo dial still rules:
+    // still parks it mid-band, wave bends the same flight per column
+    if (this.logoMode === 'still') {
+      c.drawImage(this.logo.cv, (W - this.logo.w) / 2, (134 - this.logo.h) / 2 + 10);
+    } else {
+      for (const [d, a] of [[-0.09, 0.2], [-0.045, 0.4], [0, 1]] as const) {
+        c.globalAlpha = a;
+        const p = this.bouncePos(t + d);
+        if (this.logoMode === 'wave') {
+          for (let x = 0; x < this.logo.w; x++) {
+            const y = p[1] + Math.sin((t + d) * 2.6 + x * 0.045) * 7;
+            c.drawImage(this.logo.cv, x, 0, 1, this.logo.h, p[0] + x, y, 1, this.logo.h);
+          }
+        } else {
+          c.drawImage(this.logo.cv, p[0], p[1]);
+        }
+      }
+      c.globalAlpha = 1;
     }
-    c.globalAlpha = 1;
-    c.drawImage(this.logo.cv, bounceX(t), bounceY(t));
     this.scroller(t);
   }
 }

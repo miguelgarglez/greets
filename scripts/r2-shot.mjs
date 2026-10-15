@@ -1,0 +1,23 @@
+import { chromium } from 'playwright';
+const b = await chromium.launch();
+const p = await b.newPage({ viewport: { width: 1440, height: 900 } });
+p.on('pageerror', (e) => console.log('PAGEERR', e.message));
+p.on('console', (m) => { if (m.type() === 'error') console.log('CONSOLE', m.text()); });
+await p.goto('http://localhost:5387/miguel');
+await p.waitForTimeout(1200);
+await p.screenshot({ path: process.env.OUT + '/preboot.png' });
+await p.keyboard.press('Space');
+await p.waitForTimeout(3500);
+await p.screenshot({ path: process.env.OUT + '/running.png' });
+await p.keyboard.press('e');
+await p.waitForTimeout(900);
+await p.screenshot({ path: process.env.OUT + '/deck.png' });
+// mobile
+const m = await b.newPage({ viewport: { width: 390, height: 844 }, hasTouch: true });
+await m.goto('http://localhost:5387/ana');
+await m.waitForTimeout(1200);
+await m.tap('canvas');
+await m.waitForTimeout(3000);
+await m.screenshot({ path: process.env.OUT + '/mobile.png' });
+await b.close();
+console.log('done');

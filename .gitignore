@@ -2,3 +2,7 @@ node_modules
 dist
 .env*
 .vercel
+docs/video/
+.playwright-mcp/
+docs/check/
+undefined/
