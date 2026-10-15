@@ -560,9 +560,10 @@ export default function App() {
               seat(e.clientX, e.clientY);
               el.focus();
               const move = (ev: PointerEvent) => seat(ev.clientX, ev.clientY);
-              const up = () => { cv.removeEventListener('pointermove', move); cv.removeEventListener('pointerup', up); };
+              const up = () => { cv.removeEventListener('pointermove', move); cv.removeEventListener('pointerup', up); cv.removeEventListener('pointercancel', up); };
               cv.addEventListener('pointermove', move);
               cv.addEventListener('pointerup', up);
+              cv.addEventListener('pointercancel', up);
             } else {
               // scrubs only where the crawl lives — a grab elsewhere is a
               // plain touch on the tube
@@ -577,9 +578,12 @@ export default function App() {
                 d.bend((ev.clientY - lastY) * (200 / cv.getBoundingClientRect().height));
                 lastX = ev.clientX; lastY = ev.clientY;
               };
-              const up = () => { d.pinBend = 1; cv.removeEventListener('pointermove', move); cv.removeEventListener('pointerup', up); };
+              // release OR a canceled grab snaps the wave back — a stranded
+              // bend must not outlive the gesture
+              const up = () => { d.pinBend = 1; cv.removeEventListener('pointermove', move); cv.removeEventListener('pointerup', up); cv.removeEventListener('pointercancel', up); };
               cv.addEventListener('pointermove', move);
               cv.addEventListener('pointerup', up);
+              cv.addEventListener('pointercancel', up);
             }
           }} />
         <div className="crt" aria-hidden>
