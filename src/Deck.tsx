@@ -18,7 +18,7 @@ export interface ExportUi {
   error: string | null;
 }
 
-export type Preview = '' | 'scroll' | 'greetz' | SectionId;
+export type Preview = '' | 'scroll' | 'scrollhold' | 'greetz' | SectionId;
 type Tab = 'rigs' | 'words' | 'look' | 'motion' | 'tune';
 const TABS: { id: Tab; label: string }[] = [
   { id: 'rigs', label: 'RIGS' },
@@ -114,6 +114,7 @@ export default function Deck(props: {
   // draft from spec when the field isn't the thing typing it
   const [greetzDraft, setGreetzDraft] = useState(spec.greetz.join(', '));
   const [greetzFocus, setGreetzFocus] = useState(false);
+  const [scrollFocus, setScrollFocus] = useState(false);
   const xRef = useRef<HTMLButtonElement>(null);
   // the manual link hands itself over — focused and selected the moment it
   // appears, so one ⌘C is the whole interaction
@@ -146,9 +147,11 @@ export default function Deck(props: {
   // scroller, the greetz field pins the roll, everything else free-wheels
   useEffect(() => {
     secPinRef.current = '';
-    props.onPreview(greetzFocus ? 'greetz' : tab === 'words' || tab === 'motion' ? 'scroll' : '');
+    // while the scroll field is focused the tube holds the whole phrase
+    // still and fitted; unfocused, the pin crawls it
+    props.onPreview(greetzFocus ? 'greetz' : scrollFocus ? 'scrollhold' : tab === 'words' || tab === 'motion' ? 'scroll' : '');
     return () => props.onPreview('');
-  }, [tab, greetzFocus]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [tab, greetzFocus, scrollFocus]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // text inputs swallow their own keys except Escape — the deck must still
   // be able to close while a field has focus
@@ -228,7 +231,7 @@ export default function Deck(props: {
               <span className="dnote">A RIG IS A WHOLE STYLE IN ONE KEY</span>
             </Row>
             <Row label="NOW">
-              <span className="dnote">
+              <span className="dnote big">
                 {`${resolved.ramp.toUpperCase()} · ${resolved.font.toUpperCase()} · LOGO ${resolved.logo.toUpperCase()} · SCROLL ${resolved.speed}× · TUNE ${resolved.tune.toUpperCase()}`}
               </span>
             </Row>
@@ -256,12 +259,14 @@ export default function Deck(props: {
             <Field cap="SCROLLTEXT · EMPTY = AUTO" wide>
               <input
                 className="dinput" aria-label="scrolltext" maxLength={200}
-                placeholder="LEAVE EMPTY FOR THE GENERATED ONE" value={spec.text}
+                placeholder="EMPTY = GENERATED" value={spec.text}
+                onFocus={() => setScrollFocus(true)}
+                onBlur={() => setScrollFocus(false)}
                 onChange={(e) => props.onPatch({ text: cleanText(e.target.value) })}
                 onKeyDown={inputKeys}
               />
             </Field>
-            <Field cap="GREETZ · COMMA LIST · EMPTY = AUTO" wide>
+            <Field cap="GREETZ · COMMA LIST" wide>
               <input
                 className="dinput" aria-label="greets list"
                 placeholder="WHO ELSE GETS A SHOUT" value={greetzDraft}
@@ -372,7 +377,7 @@ export default function Deck(props: {
                 <input ref={urlRef} className="dinput urlline" readOnly value={props.linkNote} aria-label="share link"
                   onFocus={(e) => e.currentTarget.select()} />
               ) : (
-                <span className="dnote" aria-live="polite">{props.linkNote}</span>
+                <span className="dnote big" aria-live="polite">{props.linkNote}</span>
               )}
             </>
           )}

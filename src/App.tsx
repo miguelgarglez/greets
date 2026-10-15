@@ -342,6 +342,13 @@ export default function App() {
   };
   const patch = (p: Partial<Spec>) => {
     if (STYLE_KEYS.some((k) => k in p)) pushUndo();
+    // the glass acknowledges a style change: a new section set replays the
+    // shutter, a palette/font/logo change melts the old frame over the new
+    const dm = demoRef.current;
+    if (dm && phaseRef.current === 'running' && !REDUCED) {
+      if ('sections' in p) dm.wipeIn();
+      else if (Object.keys(p).some((k) => (STYLE_KEYS as readonly string[]).includes(k) && k !== 'tune')) dm.beginXfade();
+    }
     setSpec((s) => ({ ...s, ...p }));
     // no thud here — the Chip's press already buzzes, and fields call patch
     // on every keystroke; a patch must not mean a sound
@@ -350,6 +357,8 @@ export default function App() {
     const prev = undoRef.current.pop();
     if (!prev) return;
     if (!undoRef.current.length) setCanUndo(false);
+    const dm = demoRef.current;
+    if (dm && phaseRef.current === 'running' && !REDUCED) dm.beginXfade();
     setSpec((s) => ({ ...s, ...prev }));
   };
   // the deck pins the tube to the part being edited

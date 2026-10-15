@@ -196,6 +196,9 @@ body { background: #060608; overflow: hidden; font-family: 'PS2P', monospace; }
 .dkeys { display: flex; flex-wrap: wrap; gap: 7px; align-items: center; flex: 1; }
 /* the note is the value, the label is the caption — hierarchy by light */
 .dnote { font-size: 10px; color: #c6c6e4; align-self: center; user-select: text; }
+/* a confirmation the user asked for (NOW readout, the copied link) is a
+   value, not a whisper — it sits at field-adjacent size */
+.dnote.big { font-size: 12px; color: #ececfa; }
 /* a refused clipboard earns its own row: the whole link in a field that
    selects itself, inside the bay instead of hanging off the keys */
 .urlline {
@@ -209,7 +212,8 @@ body { background: #060608; overflow: hidden; font-family: 'PS2P', monospace; }
 .field.wide { grid-column: 1 / -1; }
 .fcap { font-size: 10px; color: #9a9ab8; letter-spacing: 1px; }
 .resthumb {
-  height: 36px; border: 1px solid #2c2c3a; border-radius: 3px;
+  /* the finished card is worth a real look — tall enough to see the loop */
+  height: 56px; border: 1px solid #2c2c3a; border-radius: 3px;
   image-rendering: pixelated;
   /* the receipt grows out of the rail, not on top of it */
   animation: thumbin 0.22s steps(4) backwards; transform-origin: left center;
@@ -217,7 +221,7 @@ body { background: #060608; overflow: hidden; font-family: 'PS2P', monospace; }
 
 .key {
   font-family: 'PS2P', monospace; font-size: 10px; letter-spacing: 0.5px;
-  min-height: 44px;
+  min-height: 44px; min-width: 44px; justify-content: center;
   color: #b8b8c8;
   background: linear-gradient(#1c1c26, #101017);
   border: 1px solid #2e2e3c; border-radius: 4px;
@@ -253,28 +257,27 @@ body { background: #060608; overflow: hidden; font-family: 'PS2P', monospace; }
   padding: 8px 2px 7px; caret-color: var(--hot, #f80);
   min-width: 0;
 }
-.dinput::placeholder { color: #5d5d78; }
+/* a hint is a caption, not the value — at field size it slices mid-word */
+.dinput::placeholder { color: #5d5d78; font-size: 11px; }
 .dinput:focus { border-bottom-color: var(--hot, #f80); outline: none; }
 
 .prog { font-size: 10px; color: var(--hot, #f80); align-self: center; letter-spacing: 1px; white-space: pre; }
 
-/* a key that answers — a relabel fades the new word in on the spot instead
-   of sliding a whole new label through the keycap */
-@keyframes kswap { from { opacity: 0; } }
-.klabel { display: inline-block; animation: kswap 0.16s steps(2) backwards; }
+/* a key that answers — a relabel flashes through the hot color in two hard
+   steps, a raster flicker, not a fade that hides what changed */
+@keyframes kswap { 0% { opacity: 0; color: var(--hot, #f80); } 50% { opacity: 1; color: var(--hot, #f80); } 100% { color: inherit; } }
+.klabel { display: inline-block; animation: kswap 0.18s steps(2) backwards; }
 .prog.err { color: #ff5a50; }
 .prog.done { color: #7ee08a; }
 
 @media (max-width: 720px) {
-  .app .tube { transition: none; }
-  /* the tube centers in the room above the bay — balanced breathing room
-     beats one long black shelf under the glass */
+  /* the tube parks with the same 0.45s curve as desktop — a jump cut here
+     reads as a bug, not as speed */
   .app.editing .tube { margin-block: auto; }
-  .app.editing .deck { margin-top: auto; }
-  /* four rigs, four equal cells — ACID never orphans a row */
-  .rigkeys { display: grid; grid-template-columns: 1fr 1fr; }
-  .rigkeys .key { justify-content: center; }
-  .deck { width: 100vw; border-radius: 0; margin-top: 8px; }
+  /* the bay owns the bottom edge but takes no auto margin — two auto
+     margins on the tube split the leftover room evenly around the glass,
+     and a tall group scrolls its body instead of shrinking the tube away */
+  .deck { width: 100vw; border-radius: 0; margin-top: 8px; max-height: 58dvh; }
   .decktitle { display: none; }
   .dtabs { gap: 3px; }
   .deckhead { padding: 8px 8px; gap: 5px; }

@@ -115,6 +115,22 @@ export class Demo {
     this.applyAssets(a);
   }
 
+  // a style change should arrive, not cut — snapshot the outgoing frame
+  // and let it melt over the new picture for a fifth of a second
+  private xfadeCv: HTMLCanvasElement | null = null;
+  private xfadeT0 = 0;
+  beginXfade() {
+    if (!this.xfadeCv) {
+      this.xfadeCv = document.createElement('canvas');
+      this.xfadeCv.width = W; this.xfadeCv.height = H;
+    }
+    this.xfadeCv.getContext('2d')!.drawImage(this.ctx.canvas, 0, 0);
+    this.xfadeT0 = performance.now();
+  }
+  // a section-set change replays the copper shutter instead of cutting
+  private wipeInT0 = -1e9;
+  wipeIn() { this.wipeInT0 = performance.now(); }
+
   private buildPlasmaPalette(ramp: RampName): Uint32Array {
     const r = RAMPS[ramp];
     // cross a cold ramp through the low indices so the field carries a second
@@ -365,7 +381,9 @@ export class Demo {
     // is ever sliced by the copper
     c.save();
     c.beginPath();
-    c.rect(0, 36, W, 118);
+    // the clip reaches a few px past the band so a bouncing cap height
+    // slides under the frame edge whole instead of shearing on it
+    c.rect(0, 33, W, 124);
     c.clip();
     if (!greetz.length) { c.restore(); this.copperBar(6, t * 3); this.copperBar(H - 30, t * 3 + 3); return; }
     const lineH = 22;
@@ -655,7 +673,7 @@ export class Demo {
   // while the deck is open it can pin the tube to the part being edited —
   // a knob you can't see move isn't a knob. '' means free rotation; a
   // section id pins that section; 'scroll' pins the classic scroller
-  previewMode: '' | 'scroll' | 'greetz' | SectionId = '';
+  previewMode: '' | 'scroll' | 'scrollhold' | 'greetz' | SectionId = '';
 
   // returns true when a pin owns the frame — shared by the live loop and
   // the reduced-motion still so the pin works in both
@@ -665,7 +683,9 @@ export class Demo {
     // absolute clock — a pin must not restart its crawl on the rotator's
     // 9-second boundary
     if (m === 'greetz') { this.renderGreetzBoard(greetz); return true; }
-    if (m === 'scroll' && still) {
+    // a focused scroll field parks the whole phrase fitted in the band —
+    // the line answers the keys as you type; the crawl resumes on blur
+    if (m === 'scrollhold' || (m === 'scroll' && still)) {
       // the frozen pin parks the phrase centered in the band — a fragment
       // frozen mid-crawl is useless to the person editing it. shrink until
       // it fits, and if even that fails keep the START of the line, not
@@ -700,6 +720,7 @@ export class Demo {
   }
 
   renderLoop(t: number, greetz: string[]) {
+    const c = this.ctx;
     if (!this.renderPinned(t, greetz)) {
       const i = Math.floor(t / 9) % (this.sections.length + 1);
       const lt = t - Math.floor(t / 9) * 9;
@@ -720,6 +741,15 @@ export class Demo {
       if (held) this.wipeSkipSec = Math.floor(t / 9);
       else if (lt < 0.45 && this.wipeSkipSec !== Math.floor(t / 9)) this.wipe(lt / 0.45);
     }
+    // a rig swap melts the outgoing frame over the new one; a section-set
+    // swap replays the shutter — the glass tells you the change landed
+    if (this.xfadeCv) {
+      const xu = (performance.now() - this.xfadeT0) / 220;
+      if (xu >= 1) this.xfadeCv = null;
+      else { c.globalAlpha = 1 - xu; c.drawImage(this.xfadeCv, 0, 0); c.globalAlpha = 1; }
+    }
+    const wu = (performance.now() - this.wipeInT0) / 450;
+    if (wu < 1) this.wipe(wu);
     // the mute badge sits above any pin — silence must be visible; a fresh
     // boot answers the same way so the state is never inferred
     if (this.muted) this.tinyText('SND OFF', 3, 0, 1);
