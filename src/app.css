@@ -215,8 +215,9 @@ body { background: #060608; overflow: hidden; font-family: 'PS2P', monospace; }
 .field.wide { grid-column: 1 / -1; }
 .fcap { font-size: 10px; color: #9a9ab8; letter-spacing: 1px; }
 .resthumb {
-  /* the finished card is worth a real look — tall enough to see the loop */
-  height: 56px; border: 1px solid #2c2c3a; border-radius: 3px;
+  /* the finished card is worth a real look — tall enough to read the
+     name on it, not just to prove a file exists */
+  height: 88px; border: 1px solid #2c2c3a; border-radius: 3px;
   image-rendering: pixelated;
   /* the receipt grows out of the rail, not on top of it */
   animation: thumbin 0.22s steps(4) backwards; transform-origin: left center;
@@ -279,10 +280,10 @@ body { background: #060608; overflow: hidden; font-family: 'PS2P', monospace; }
   /* the tube parks with the same 0.45s curve as desktop — a jump cut here
      reads as a bug, not as speed */
   .app.editing .tube { margin-block: auto; }
-  /* the bay owns the bottom edge but takes no auto margin — two auto
-     margins on the tube split the leftover room evenly around the glass,
-     and a tall group scrolls its body instead of shrinking the tube away */
-  .deck { width: 100vw; border-radius: 0; margin-top: 8px; max-height: 58dvh; }
+  /* the bay owns a FIXED share of the screen — a rack has one height, so
+     a shorter group spreads its rows inside the bay instead of sliding
+     the glass. the tube's slot is then the same on every tab */
+  .deck { width: 100vw; border-radius: 0; margin-top: 8px; flex: none; height: 58dvh; }
   /* four rigs, four equal cells — ACID never orphans a row */
   .rigkeys { display: grid; grid-template-columns: 1fr 1fr; }
   .rigkeys .key { justify-content: center; }
@@ -300,12 +301,16 @@ body { background: #060608; overflow: hidden; font-family: 'PS2P', monospace; }
   .dkeys .dnote { flex-basis: 100%; }
   .fab { right: 12px; top: max(12px, calc(env(safe-area-inset-top) + 8px)); }
   .deckfoot { padding-bottom: calc(13px + env(safe-area-inset-bottom)); }
+  /* closed, the phone tube still gets the full rail width the bay uses —
+     no inset glass floating over a black half-screen */
+  .app:not(.editing) .tube { width: min(100vw, 140dvh); }
 }
 
 /* short windows (landscape phones): the bay caps itself so the tube keeps
    a real share of the glass — the body already scrolls internally */
 @media (max-height: 480px) {
   .deck { max-height: 46dvh; }
+  @media (max-width: 720px) { .deck { height: 46dvh; } }
   .app.editing .tube { min-width: 160px; }
 }
 

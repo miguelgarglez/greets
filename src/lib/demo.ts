@@ -171,6 +171,16 @@ export class Demo {
     }
   }
 
+  // the reserved band the words own — a solid trough under the copper so
+  // no bar ever shares pixels with a line of type. every crawl clamps its
+  // whole sine excursion inside it, and the parked block grows its own
+  // plate down to this top edge when it wraps
+  private trough() {
+    const c = this.ctx;
+    c.fillStyle = '#05050a';
+    c.fillRect(0, 162, W, H - 162);
+  }
+
   // a single copper bar: 24px tall, hot in the middle, dark at edges,
   // with the ramp phase cycling like a real copperlist
   private copperBar(y: number, phase: number) {
@@ -238,9 +248,12 @@ export class Demo {
     const [amp0, sf, tf] = this.wave;
     const amp = amp0 * ampScale;
     const gh = 8 * scale;
-    // the wave never dips a glyph under the glass — the baseline rides
-    // higher when the amplitude is wild
-    const yb = Math.min(this.pinY ?? yBase, H - 2 - amp - gh);
+    // the wave never dips a glyph under the glass AND never lifts one into
+    // the copper — the trough is a reserved band, so the whole excursion
+    // clamps inside it at every speed and amplitude
+    const band = Math.min(amp, (H - 2 - 164 - gh) / 2);
+    const yb = Math.max(164 + band, Math.min(this.pinY ?? yBase, H - 2 - band - gh));
+    const a2 = band;
     const line = text ?? this.scrolltext;
     const adv = this.font.px * scale * 1.0;
     const total = line.length * adv + W + 40;
@@ -250,7 +263,7 @@ export class Demo {
       const g = this.font.get(line[i]);
       const cw = g ? g.w * scale : adv * 0.6;
       if (x > -adv && x < W + adv && g) {
-        const y = yb + Math.sin(t * tf + x * sf) * amp;
+        const y = yb + Math.sin(t * tf + x * sf) * a2;
         c.drawImage(g.cv, x, y, g.w * scale, g.h * scale);
       }
       x += cw + 1;
@@ -309,6 +322,7 @@ export class Demo {
     c.fillRect(0, 0, W, H);
     this.starfield(t);
     this.copper(t);
+    this.trough();
     if (logo) this.waveLogo(t, H * 0.3);
     if (scroll) this.scroller(scrollT, 2, H - 22, ampScale);
   }
@@ -374,6 +388,7 @@ export class Demo {
     m.drawImage(this.logo.cv, mx, my);
     c.drawImage(this.plasmaMaskCv, 0, 0);
     this.copper(t);
+    this.trough();
     this.scroller(t);
   }
 
@@ -505,18 +520,20 @@ export class Demo {
     const shown = (draft.toUpperCase() || '').slice(0, 14);
     if (shown.length > this.lastDraftLen) { this.flashStart = t; this.flashIdx = shown.length - 1; }
     this.lastDraftLen = shown.length;
+    // a keystroke kicks the copper — the machine reacts too. the bars draw
+    // first so the trough can reserve the words' band over their tails
+    const flash = t - this.flashStart < 0.28;
+    this.copper(t, 8, 146, flash ? 6 : 0, flash ? 3 : 0);
+    this.trough();
     this.tinyText(badPath ? 'NO DISK' : 'TYPE A NAME', 52, t, 2);
     const x = this.drawDraft(shown, t);
     if (Math.floor(t * 2) % 2 === 0) {
       c.fillStyle = this.ramp[6];
       c.fillRect(x, 96 + 18, 14, 3);
     }
-    if (shown) this.tinyText('PRESS ENTER', 138, t, 1);
+    if (shown) this.tinyText('PRESS ENTER', 124, t, 1);
     // a bad path still gets a working machine — the insert-disk line crawls
     if (badPath) this.scroller(t * 0.6, 1.5, H - 26, 0.8, 'DISK ERROR +++ INSERT A NAME AND BOOT +++ ');
-    // a keystroke kicks the copper — the machine reacts too
-    const flash = t - this.flashStart < 0.28;
-    this.copper(t, 8, 178, flash ? 6 : 0, flash ? 3 : 0);
   }
 
   // a pixel power key — the visible boot target on touch, drawn pressed
@@ -634,6 +651,7 @@ export class Demo {
     c.fillRect(0, 0, W, H);
     this.starfield(t);
     this.copper(t);
+    this.trough();
     const hot = this.solidLogo(this.ramp[6]);
     const x0 = (W - this.logo.w) / 2;
     const draws = [{ d: -0.11, a: 0.25 }, { d: -0.055, a: 0.45 }, { d: 0, a: 1 }];
@@ -726,7 +744,16 @@ export class Demo {
         }
         if (cur) rows.push(cur);
         const last = rows.length - 1;
-        rows.forEach((r, i) => this.tinyText(r, H - 26 - (last - i) * 11, 0, 1));
+        // the block sits inside the text band; a stack taller than the
+        // band grows its own plate upward over the copper rather than
+        // climbing through the bar
+        const firstTop = 186 - last * 11;
+        if (firstTop - 4 < 162) {
+          const c = this.ctx;
+          c.fillStyle = '#05050a';
+          c.fillRect(0, firstTop - 4, W, H - (firstTop - 4));
+        }
+        rows.forEach((r, i) => this.tinyText(r, 186 - (last - i) * 11, 0, 1));
       }
       if (m === 'scrollhold') this.pinHold = true;
       return true;
@@ -852,6 +879,10 @@ export class Demo {
     }
     c.fillStyle = 'rgba(5,5,10,0.8)';
     c.fillRect(0, 142, W, H - 142);
+    // the trough the words own is solid — a bar ghosting through at a
+    // fifth strength still slices a 16px glyph
+    c.fillStyle = '#05050a';
+    c.fillRect(0, 162, W, H - 162);
     this.waveLogo(t, H * 0.34);
     this.scroller(t);
   }
@@ -862,6 +893,7 @@ export class Demo {
     c.fillRect(0, 0, W, H);
     this.starfield(t);
     this.copper(t);
+    this.trough();
     // the blitter's bounce is its identity — but the logo dial still rules:
     // still parks it mid-band, wave bends the same flight per column
     if (this.logoMode === 'still') {

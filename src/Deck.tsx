@@ -238,12 +238,14 @@ export default function Deck(props: {
             </Row>
             <Row label="NOW">
               <span className="dnote big">
-                {/* the line may only break AT a dot — never inside
-                    "· A", or the phone drops a lone letter on the row */}
-                {`${resolved.ramp.toUpperCase()} · ${resolved.font.toUpperCase()} · LOGO ${resolved.logo.toUpperCase()} · SCROLL ${resolved.speed}× · TUNE ${resolved.tune.toUpperCase()}`
-                  .split(' · ').map((s, i) => (
-                    <span key={i}>{i > 0 && ' '}<span className="nowseg">{i > 0 ? `· ${s}` : s}</span></span>
-                  ))}
+                {/* the line may only break AT a dot — the dot trails its
+                    segment so a wrapped row never opens with a stray "·" */}
+                {(() => {
+                  const parts = `${resolved.ramp.toUpperCase()} · ${resolved.font.toUpperCase()} · LOGO ${resolved.logo.toUpperCase()} · SCROLL ${resolved.speed}× · TUNE ${resolved.tune.toUpperCase()}`.split(' · ');
+                  return parts.map((s, i) => (
+                    <span key={i}>{i > 0 && ' '}<span className="nowseg">{i < parts.length - 1 ? `${s} ·` : s}</span></span>
+                  ));
+                })()}
               </span>
             </Row>
           </>
@@ -364,7 +366,7 @@ export default function Deck(props: {
           {exp.busy ? (
             <>
               <Chip on={false} hot={hot} disabled onPress={() => {}} label={exportLabel(exp.kind ?? 'gif', exp.kind === 'video' ? '▶ FILM' : '◉ GIF')} />
-              <span className="prog" aria-live="polite">{bar(exp.frac)} {exp.label}</span>
+              <span className="prog" aria-live="polite">{bar(exp.frac)} <span className="klabel" key={exp.label}>{exp.label}</span></span>
               <Chip on={false} hot={hot} label="CANCEL" onPress={props.onCancelExport} />
             </>
           ) : exp.result ? (
