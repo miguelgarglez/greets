@@ -18,6 +18,9 @@ body { background: #060608; overflow: hidden; font-family: 'PS2P', monospace; }
   aspect-ratio: 320 / 200;
   border-radius: 8px;
   overflow: hidden;
+  /* the glass needs a legible edge — a hairline bezel, lighter than the
+     void around it, so trough text can never read as floating outside */
+  border: 1px solid #1a1a28;
   box-shadow: 0 0 80px rgba(80, 120, 255, 0.10), 0 30px 90px rgba(0,0,0,0.8);
 }
 .demoscreen { width: 100%; height: 100%; display: block; image-rendering: pixelated; background: #05050a; }
@@ -36,7 +39,11 @@ body { background: #060608; overflow: hidden; font-family: 'PS2P', monospace; }
   font-size: 16px; cursor: text;
 }
 
-.crt { position: absolute; inset: 0; pointer-events: none; }
+.crt { position: absolute; inset: 0; pointer-events: none;
+  /* inner lip — the tube's own bezel carries the edge, this just deepens
+     the bottom so text meets a floor, not the glass's last pixel row */
+  box-shadow: inset 0 -16px 22px -8px rgba(0,0,0,0.8), inset 0 8px 12px -6px rgba(0,0,0,0.45);
+}
 .crt-lines {
   position: absolute; inset: 0;
   background: repeating-linear-gradient(to bottom, rgba(0,0,0,0.22) 0 1px, transparent 1px 3px);
@@ -334,5 +341,5 @@ body { background: #060608; overflow: hidden; font-family: 'PS2P', monospace; }
   .deck { animation: none; }
   .app .tube { transition: none; }
   .fab::before { animation: none; }
-  .klabel, .dpanel, .resthumb { animation: none; }
+  .klabel, .dpanel, .resthumb, .dfields .field { animation: none; }
 }

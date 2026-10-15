@@ -117,6 +117,10 @@ export default function App() {
     const onNav = () => {
       const n = pathName();
       setSpec(decodeSpec(location.hash, n ?? ''));
+      // the new text didn't come from the field — a stale glass caret
+      // could land inside the +++ tail
+      const dd = demoRef.current;
+      if (dd) dd.pinCaret = -1;
       if (n !== nameRef.current) {
         // the route owns the phase: back to '/' means landing, a different
         // name means a fresh tube that still has to be powered on — and a
@@ -536,54 +540,70 @@ export default function App() {
           onPointerDown={(e) => {
             // with the deck open the glass is a surface you can grab —
             // a press on the parked line seats the field's caret there;
-            // a drag on the pinned crawl walks the sentence by hand
+            // a drag on the pinned crawl walks the sentence by hand.
+            // reduced motion draws the 'scroll' pin parked too, so a grab
+            // there is a caret seat, not a scrub of a clock no one reads
             const d = demoRef.current;
             const m = previewRef.current;
-            if (!d || (m !== 'scrollhold' && m !== 'scroll')) return;
-            // keep the field's focus — a canvas press must not blur it
-            e.preventDefault();
+            const park = m === 'scrollhold' || (m === 'scroll' && REDUCED);
+            if (!d || (!park && m !== 'scroll')) return;
             const cv = e.currentTarget;
-            cv.setPointerCapture(e.pointerId);
             const toCv = (x: number, y: number): [number, number] => {
               const r = cv.getBoundingClientRect();
               return [(x - r.left) * 320 / r.width, (y - r.top) * 200 / r.height];
             };
-            if (m === 'scrollhold') {
+            const pid = e.pointerId;
+            // every grab guards on its own pointerId and dies the moment
+            // the pin it was bound to leaves — a second finger or a mid-drag
+            // blur can't keep driving a dead mode
+            const bind = (move: (ev: PointerEvent) => void, up: () => void) => {
+              const mm = (ev: PointerEvent) => {
+                if (ev.pointerId !== pid) return;
+                if (previewRef.current !== m) { done(); return; }
+                move(ev);
+              };
+              const done = () => { up(); cv.removeEventListener('pointermove', mm); cv.removeEventListener('pointerup', done); cv.removeEventListener('pointercancel', done); };
+              cv.addEventListener('pointermove', mm);
+              cv.addEventListener('pointerup', done);
+              cv.addEventListener('pointercancel', done);
+            };
+            if (park) {
               const el = document.querySelector<HTMLTextAreaElement>('textarea[aria-label="scrolltext"]');
               if (!el) return;
+              // keep the field's focus — a canvas press must not blur it
+              e.preventDefault();
+              cv.setPointerCapture(pid);
+              // seat() maps a glass index back to a field index — the glass
+              // shows the value uppercased and trimmed, so lengths can drift
+              // (a leading space, ß→SS); walk the field until its uppercase
+              // prefix reaches the glass index
+              const lead = (el.value.match(/^\s*/) ?? [''])[0].length;
               const seat = (x: number, y: number) => {
                 const [px, py] = toCv(x, y);
-                const i = Math.min(d.caretAt(px, py), el.value.length);
+                const gi = d.caretAt(px, py) + lead;
+                let i = 0, g = 0;
+                while (i < el.value.length && g < gi) { g += el.value[i].toUpperCase().length; i++; }
                 el.setSelectionRange(i, i);
-                d.pinCaret = i;
+                d.pinCaret = g - lead;
               };
               seat(e.clientX, e.clientY);
               el.focus();
-              const move = (ev: PointerEvent) => seat(ev.clientX, ev.clientY);
-              const up = () => { cv.removeEventListener('pointermove', move); cv.removeEventListener('pointerup', up); cv.removeEventListener('pointercancel', up); };
-              cv.addEventListener('pointermove', move);
-              cv.addEventListener('pointerup', up);
-              cv.addEventListener('pointercancel', up);
+              bind((ev) => seat(ev.clientX, ev.clientY), () => {});
             } else {
               // scrubs only where the crawl lives — a grab elsewhere is a
               // plain touch on the tube
               const [, py] = toCv(e.clientX, e.clientY);
               if (py < 158) return;
+              cv.setPointerCapture(pid);
               let lastX = e.clientX, lastY = e.clientY;
-              const move = (ev: PointerEvent) => {
+              bind((ev) => {
                 const k = 320 / cv.getBoundingClientRect().width;
                 d.scrub((ev.clientX - lastX) * k);
                 // vertical drag bends the wave while the grab is held —
                 // up is wilder, down is flatter, release snaps back to 1
                 d.bend((ev.clientY - lastY) * (200 / cv.getBoundingClientRect().height));
                 lastX = ev.clientX; lastY = ev.clientY;
-              };
-              // release OR a canceled grab snaps the wave back — a stranded
-              // bend must not outlive the gesture
-              const up = () => { d.pinBend = 1; cv.removeEventListener('pointermove', move); cv.removeEventListener('pointerup', up); cv.removeEventListener('pointercancel', up); };
-              cv.addEventListener('pointermove', move);
-              cv.addEventListener('pointerup', up);
-              cv.addEventListener('pointercancel', up);
+              }, () => { d.pinBend = 1; });
             }
           }} />
         <div className="crt" aria-hidden>
@@ -658,7 +678,15 @@ export default function App() {
           onCaret={(i) => {
             const d = demoRef.current;
             if (!d) return;
-            d.pinCaret = i;
+            // the glass shows the value uppercased and trimmed — map the
+            // field's caret index into glass coordinates the same way the
+            // pointer path maps them back
+            if (i >= 0) {
+              const el = document.querySelector<HTMLTextAreaElement>('textarea[aria-label="scrolltext"]');
+              const v = el?.value ?? '';
+              const lead = (v.toUpperCase().match(/^\s*/) ?? [''])[0].length;
+              d.pinCaret = v.slice(0, i).toUpperCase().length - lead;
+            } else d.pinCaret = -1;
             if (REDUCED && phaseRef.current === 'running') d.renderReduced(greetzRef.current);
           }}
           linkNote={linkNote}

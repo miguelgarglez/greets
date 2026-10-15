@@ -177,8 +177,13 @@ export class Demo {
   // plate down to this top edge when it wraps
   private trough() {
     const c = this.ctx;
-    c.fillStyle = '#05050a';
+    c.fillStyle = '#06060c';
     c.fillRect(0, 162, W, H - 162);
+    // hairline top rule and a floor — without edges the band reads as the
+    // page's void and trough text looks like it escaped the glass
+    c.fillStyle = '#1c1c30';
+    c.fillRect(0, 162, W, 1);
+    c.fillRect(0, H - 2, W, 2);
   }
 
   // a single copper bar: 24px tall, hot in the middle, dark at edges,
@@ -252,9 +257,11 @@ export class Demo {
     const gh = 8 * scale;
     // the wave never dips a glyph under the glass AND never lifts one into
     // the copper — the trough is a reserved band, so the whole excursion
-    // clamps inside it at every speed and amplitude
-    const band = Math.min(amp, (H - 2 - 164 - gh) / 2);
-    const yb = Math.max(164 + band, Math.min(this.pinY ?? yBase, H - 2 - band - gh));
+    // clamps inside it at every speed and amplitude; the margins are real:
+    // 8px under the bar and 8px off the bottom edge, so no letter ever
+    // kisses the glass's invisible lip (dark-on-dark, the edge has no line)
+    const band = Math.min(amp, (H - 8 - 166 - gh) / 2);
+    const yb = Math.max(166 + band, Math.min(this.pinY ?? yBase, H - 8 - band - gh));
     const a2 = band;
     const line = text ?? this.scrolltext;
     const adv = this.font.px * scale * 1.0;
@@ -743,7 +750,7 @@ export class Demo {
     }
     if (cur) rows.push({ t: cur, s: cs, e: cs + cur.length });
     const last = rows.length - 1;
-    return { rows: rows.map((r, i) => ({ ...r, y: 186 - (last - i) * 11 })), scale: 1 };
+    return { rows: rows.map((r, i) => ({ ...r, y: 184 - (last - i) * 11 })), scale: 1 };
   }
 
   // a press on the parked line is a press on the field — answers the
@@ -792,16 +799,19 @@ export class Demo {
       // copper rather than letting a row climb through the bar
       if (rows.length > 1 && rows[0].y - 4 < 162) {
         const c = this.ctx;
-        c.fillStyle = '#05050a';
+        c.fillStyle = '#06060c';
         c.fillRect(0, rows[0].y - 4, W, H - (rows[0].y - 4));
       }
       for (const r of rows) this.tinyText(r.t, r.y, 0, scale);
-      // the glass IS the field while it's parked — the caret blinks at the
-      // index the input carries, so the line under your eyes and the line
-      // under your hands are the same object
-      if (this.pinCaret >= 0 && Math.floor(performance.now() / 480) % 2 === 0) {
+      // the glass IS the field while it's parked — the caret sits at the
+      // index the input carries. it blinks on the live clock, but on a
+      // reduced-motion still it must hold — a one-shot paint landing in
+      // the blink's off half would leave no caret until the next event
+      if (this.pinCaret >= 0 && (still || Math.floor(performance.now() / 480) % 2 === 0)) {
         const ci = Math.min(this.pinCaret, this.scrolltext.trim().length);
-        const row = rows.find((r) => ci <= r.e) ?? rows[rows.length - 1];
+        // a row's span ends where the next row's word starts — an index on
+        // the boundary belongs to the row below, so compare strictly
+        const row = rows.find((r) => ci < r.e) ?? rows[rows.length - 1];
         if (row) {
           const rx = (W - this.drawnW(row.t, scale)) / 2 + this.drawnW(row.t.slice(0, Math.max(0, ci - row.s)), scale);
           const c = this.ctx;
@@ -935,8 +945,7 @@ export class Demo {
     c.fillRect(0, 142, W, H - 142);
     // the trough the words own is solid — a bar ghosting through at a
     // fifth strength still slices a 16px glyph
-    c.fillStyle = '#05050a';
-    c.fillRect(0, 162, W, H - 162);
+    this.trough();
     this.waveLogo(t, H * 0.34);
     this.scroller(t);
   }

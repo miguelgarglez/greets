@@ -391,7 +391,7 @@ export default function Deck(props: {
           ) : (
             <>
               <Chip on={false} hot={hot} label="◉ GIF" title="600px square loop" onPress={() => props.onExport('gif')} />
-              <Chip on={false} hot={hot} label="▶ FILM" title="720p video with the tune" onPress={() => props.onExport('video')} />
+              <Chip on={false} hot={hot} label="▶ FILM" title="720p video, with the tune if it's on" onPress={() => props.onExport('video')} />
               <Chip on={props.linkState !== 'idle'} hot={hot}
                 label={props.linkState === 'copied' ? '⧉ COPIED' : props.linkState === 'manual' ? '⧉ COPY THIS' : '⧉ LINK'}
                 onPress={props.onShareLink} />

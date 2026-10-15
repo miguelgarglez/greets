@@ -7,7 +7,9 @@ raster logo, copper bars, a three-layer starfield, a sine-wave scrolltext, a pla
 section with the name carved out, a bouncing blitter pass, a greetz roll — and an
 original procedural chiptune rendered by a four-channel tracker engine.
 
-Everything is seeded from the name. Same name, same demo, forever.
+Everything is seeded from the name — same name, same default demo — and a
+`#g2.` link carries the whole spec, so a shared URL reproduces its own
+cracktro for that name, whatever you changed in the deck.
 
 ## The control deck
 
@@ -35,8 +37,8 @@ link reproduces the exact cracktro — texts, palette, font, tune and all.
 - **◉ GIF** — a 600×600 card: the demo on top, a printed label band with the
   name and credits below, looping seamless through `gifenc`, ready for chat.
 - **▶ FILM** — a 1280×720 film that stays on the recipient's section from
-  first frame to last, with the real tune: WebCodecs + `mp4-muxer` where
-  available, MediaRecorder fallback elsewhere.
+  first frame to last, with the real tune unless the TUNE knob is off:
+  WebCodecs + `mp4-muxer` where available, MediaRecorder fallback elsewhere.
 - **⧉ LINK** — the shareable URL with all your settings in it.
 
 Both exports are a fixed take of the opening section — the part that carries the
